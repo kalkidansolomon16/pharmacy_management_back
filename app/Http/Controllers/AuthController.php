@@ -14,11 +14,13 @@ class AuthController extends Controller
         'password'=>'required'
     ]);
     $user  = User::where('email',$data['email'])->first();
-    if(!$user || ! Hash::check($data['password'],$user->password));
-    return response()->json([
-        'message'=>'invalid credentials',
-        'status'=>401,
-    ]);
+    if(!$user || !Hash::check($data['password'], $user->password)){
+
+        return response()->json([
+            'message'=>'invalid credentials',
+            'status'=>401,
+        ],401);
+    };
 
     $token = $user->createToken('auth-token')->plainTextToken;
     return response()->json([
