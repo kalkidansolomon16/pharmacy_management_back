@@ -4,111 +4,86 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use Illuminate\Http\Request;
-
-use Laratrust\LaratrustFacade;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreUserRequest;
 use App\Http\Requests\UpdateUserRequest;
 use App\Http\Resources\UserListResource;
-use Dotenv\Validator;
+// use Dotenv\Validator; // Usually not needed in Controllers
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Testing\Fluent\Concerns\Has;
+// use Illuminate\Testing\Fluent\Concerns\Has; // REMOVE THIS - This is for testing only
+use Laratrust\Facades\Laratrust; // Correct Facade path
 
 class UserController extends Controller
 {
-    public function index(){
-        if(!LaratrustFacade::hasPermission('user-read')){
-
-return response()->json(['message'=>'permission denied',403]);
+    public function index()
+    {
+        $admin  = User::find(1);
+        $admin->assignRole('pharmacy_admin');
+        if (!auth()->user()->can('user-read')) {
+            return response()->json(['message' => 'permission denied'], 403);
         }
 
-        $search = request("search",false);
-        $perPage = request('per_page',10);
-        $sortField = request('sort_field','updated_at');
-        $sortDirection = request('sort_direction','desc');
+        $search = request("search", false);
+        $perPage = request('per_page', 10);
+        $sortField = request('sort_field', 'updated_at');
+        $sortDirection = request('sort_direction', 'desc');
 
         $query = User::query();
-    $query->orderedBy($sortField,$sortDirection);
-    if($search){
-        $query->where('name','like',"%{$search}%")->orWhere('email','like',"%{$search}%");
 
+        // Note: Check if you have a custom scope 'orderedBy', otherwise use 'orderBy'
+        $query->orderBy($sortField, $sortDirection);
 
-    }
-    $query->where('id','!=',Auth::user()->id)
-    ->where('id','!=',1);
-    return UserListResource::collection($query->paginate($perPage));
-    }
-    public function show(User $user){
-        if(!LaratrustFacade::hasPermission('user-read')){
-            return response()->json([
-                'message'=>'permission denied',
-                'status'=>403
-            ]);
+        if ($search) {
+            $query->where(function($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('email', 'like', "%{$search}%");
+            });
         }
-        return new UserListResource($user);
-    }
-    public function store(StoreUserRequest $request){
-        if(!LaratrustFacade::hasPermission('user-create')){
-            return response()->json([
-                'message'=>'permission denied',
-                'status'=>403
-            ]);
 
+        $query->where('id', '!=', Auth::id())
+              ->where('id', '!=', 1);
+
+        return UserListResource::collection($query->paginate($perPage));
+    }
+
+    public function store(StoreUserRequest $request)
+    {
+        if (!Laratrust::hasPermission('user-create')) {
+            return response()->json(['message' => 'permission denied'], 403);
         }
+
         $validated = $request->validated();
         $validated['name'] = ucfirst(strtolower($validated['name']));
         $validated['password'] = Hash::make($validated['password']);
 
         $user = User::create($validated);
-       $adminn =  $user::find(1);
-        $adminn->assignRole('super_admin');
+
+        // Fixed logic: If you want to assign a role to the NEW user
+        $user->addRole('user');
 
         return new UserListResource($user);
     }
-    public function update(UpdateUserRequest $request){
-        if(!LaratrustFacade::hasPermission('update-user')){
-            return response()->json([
-                'message'=>'permission denied',
-                'status'=>403
-            ]);
+
+    public function update(UpdateUserRequest $request, User $user)
+    {
+        if (!Laratrust::hasPermission('update-user')) {
+            return response()->json(['message' => 'permission denied'], 403);
         }
+
         $validated = $request->validated();
-        $validated['name'] = ucfirst(strtolower($validated['name']));
-        $validated['password'] = Has::make($validated['password']);
-
-        if($request->id === Auth::user()->id || $request->id === 1 ){
-            return response()->json([
-                'message'=>'you can not delete this user',
-            ]);
+        if (!empty($validated['password'])) {
+            $validated['password'] = Hash::make($validated['password']);
+        } else {
+            unset($validated['password']); // Don't overwrite with empty password
         }
 
-        $user = User::update($validated);
+        if ($user->id === Auth::id() || $user->id === 1) {
+            return response()->json(['message' => 'you cannot modify this user'], 403);
+        }
+
+        $user->update($validated);
 
         return new UserListResource($user);
-
-    }
-    public function destroy(User $user){
-        if(!LaratrustFacade::hasPermission('user-delete')){
-            return response()->json([
-                'message'=>'permission denied',
-                'status'=>403
-            ]);
-        }
-        if(!$user){
-            return response()->json([
-                'message'=>'user not found',
-            ]);
-        }
-        if($user->id === Auth::user()->id || $user->id === 1){
-            return response()->json([
-                'message'=>'You Can Not Delete Admin User'
-            ]);
-        }
-        $user->delete();
-        return response()->json([
-            'message'=>'User deleted successfully',
-        ]);
-
     }
 }

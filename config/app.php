@@ -1,7 +1,11 @@
 <?php
+// use Laratrust\Facades\Laratrust;
 
 return [
-
+'aliases' => [
+    // ...
+    'Laratrust' => Laratrust\LaratrustFacade::class,
+],
     /*
     |--------------------------------------------------------------------------
     | Application Name
