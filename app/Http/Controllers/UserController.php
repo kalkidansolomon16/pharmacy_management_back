@@ -16,7 +16,7 @@ use Laratrust\Facades\Laratrust; // Correct Facade path
 
 class UserController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         $admin  = User::find(1);
         $admin->assignRole('pharmacy_admin');
@@ -31,6 +31,7 @@ class UserController extends Controller
 
         $query = User::query();
 
+
         // Note: Check if you have a custom scope 'orderedBy', otherwise use 'orderBy'
         $query->orderBy($sortField, $sortDirection);
 
@@ -43,24 +44,25 @@ class UserController extends Controller
 
         $query->where('id', '!=', Auth::id())
               ->where('id', '!=', 1);
+              $userWithTenant = User::with('tenant')->find($request->user()->id);
 
         return UserListResource::collection($query->paginate($perPage));
     }
 
     public function store(StoreUserRequest $request)
     {
-        if (!Laratrust::hasPermission('user-create')) {
-            return response()->json(['message' => 'permission denied'], 403);
-        }
+        // if (!Laratrust::hasPermission('user-create')) {
+        //     return response()->json(['message' => 'permission denied'], 403);
+        // }
 
         $validated = $request->validated();
-        $validated['name'] = ucfirst(strtolower($validated['name']));
+        // $validated['name'] = ucfirst(strtolower($validated['name']));
         $validated['password'] = Hash::make($validated['password']);
 
         $user = User::create($validated);
 
         // Fixed logic: If you want to assign a role to the NEW user
-        $user->addRole('user');
+        // $user->addRole('user');
 
         return new UserListResource($user);
     }

@@ -37,10 +37,11 @@ class RoleAndPermissionSeeder extends Seeder
         $role = Role::findByName(('pharmacy_admin'));
         $role->givePermissionTo(Permission::all());
 
-    //    $super_admin = User::where(['email'=>'admin@pharmacy.com'])->first();
-    //     $super_admin->givePermissionTo(Permission::all());
+       $super_admin = User::where(['email'=>'admin@pharmacy.com'])->first();
+        $super_admin->givePermissionTo(Permission::all());
     //    $pharmacy_admin = Role::create(['name'=>'pharmacy_admin']);
     //    $staff = Role::create(['name'=>'staff']);
     //    $doctor = Role::create(['name'=>'doctor']);
+    $super_admin->assignRole($role);
     }
 }

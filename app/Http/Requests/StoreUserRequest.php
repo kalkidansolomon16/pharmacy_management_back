@@ -14,7 +14,7 @@ class StoreUserRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return false;
+        return true;
     }
 
     /**
@@ -26,9 +26,17 @@ class StoreUserRequest extends FormRequest
     {
         return [
             'tenant_id'=>'required',
-            'email'=>'reqiured | string | email | max:255 | unique:users,email ',
-            'password'=>['required | string | min:6 | regex:/[A-Z] | regex:/[a-z] | regex:/\d/ | regex:/[!@#$%^&*(),.?\":{}|<>]/, '],
-            'status'=>'required | numeric',
+            'email'=>'required | string | email | max:255 | unique:users,email',
+            'password'=>[
+            'required' ,
+            'string' ,
+            'min:6 ',
+            'regex:/[A-Z]/' ,
+            'regex:/[a-z]/' ,
+            'regex:/\d/ ',
+            'regex:/[!@#$%^&*(),.?\":{}|<>]/',
+            ],
+            // 'status'=>'required | numeric',
             'address'=> 'required | string',
             'phone'=> ['required', new MobileNumber,Rule::unique('users','phone')]
 

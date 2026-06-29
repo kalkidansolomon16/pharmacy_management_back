@@ -20,6 +20,7 @@ class AdminUserSeeder extends Seeder
             'email'=>'admin@pharmacy.com',
             'password'=>Hash::make('password123'),
             'status'=>'active',
+            'role'=>'Admin',
             'address'=>'Addis Abeba',
             'phone'=>'0988283088',
         ]);

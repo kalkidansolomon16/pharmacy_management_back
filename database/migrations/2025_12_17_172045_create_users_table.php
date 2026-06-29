@@ -17,7 +17,8 @@ return new class extends Migration
             // $table->string('name');
             $table->string('email')->unique();
             $table->string('password');
-            $table->enum('status',['active','inactive','pending','banned']);
+            $table->enum('status',['active','inactive','pending','banned'])->default('active');
+            $table->enum('role',['Admin','Tenant'])->default('Tenant');
             $table->string('address');
             $table->string('phone');
             $table->timestamps();

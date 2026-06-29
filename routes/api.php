@@ -8,17 +8,20 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
     return view('welcome');
-});
-// Route::apiResource('users',UserController::class);
+    });
+    // Route::apiResource('users',UserController::class);
+Route::get('/get-type-options',[TenantController::class,'getEnumValues']);
+Route::post('users',[UserController::class,'store']);
+Route::get('tenants',[TenantController::class,'index']);
+Route::post('/tenants',[TenantController::class,'store']);
 Route::post('login',[AuthController::class,'login']);
 Route::middleware('auth:sanctum')->group(function(){
 Route::get('users',[UserController::class,'index']);
-Route::post('users',[UserController::class,'store']);
+
 Route::get('users/${id}',[UserController::class,'show']);
 Route::delete('user/${id}',[UserController::class,'destroy']);
 
-Route::get('tenants',[TenantController::class,'index']);
-Route::post('tenants',[TenantController::class,'store']);
+
 Route::get('tenants/${id}',[TenantController::class,'show']);
 Route::delete('tenant/${id}',[TenantController::class,'destroy']);
 

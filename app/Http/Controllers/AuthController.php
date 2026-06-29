@@ -13,6 +13,7 @@ class AuthController extends Controller
         'email' =>'required |email ',
         'password'=>'required'
     ]);
+
     $user  = User::where('email',$data['email'])->first();
     if(!$user || !Hash::check($data['password'], $user->password)){
 
@@ -21,7 +22,7 @@ class AuthController extends Controller
             'status'=>401,
         ],401);
     };
-
+$user->load('tenant');
     $token = $user->createToken('auth-token')->plainTextToken;
     return response()->json([
         'user'=>$user,

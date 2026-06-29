@@ -11,7 +11,7 @@ class StoreTenantRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return false;
+        return true;
     }
 
     /**
@@ -24,7 +24,7 @@ class StoreTenantRequest extends FormRequest
         return [
            'name'=>'required | string',
            'type'=>'required | in:pharmacy,hospital',
-           'status'=>'required | in:active,inactive,pending,trial,suspended'
+        //    'status'=>'required | in:active,inactive,pending,trial,suspended'
 
         ];
     }

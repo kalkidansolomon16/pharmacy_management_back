@@ -9,6 +9,6 @@ class Tenant extends Model
     protected $fillable = [
         'name',
         'type',
-        'status'
+        // 'status'
     ];
 }
