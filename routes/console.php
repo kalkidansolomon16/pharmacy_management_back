@@ -1,8 +1,9 @@
 <?php
 
-use Illuminate\Foundation\Inspiring;
-use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schedule;
 
-Artisan::command('inspire', function () {
-    $this->comment(Inspiring::quote());
-})->purpose('Display an inspiring quote');
+// Daily housekeeping at 06:00 Addis Ababa time, before pharmacies open
+Schedule::command('pharmacy:scan')->dailyAt('06:00')->timezone('Africa/Addis_Ababa')->withoutOverlapping();
+
+// Keep the queue table tidy
+Schedule::command('queue:prune-failed --hours=168')->weekly();
