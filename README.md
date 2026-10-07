@@ -1,59 +1,166 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# MedLink Ethiopia — Pharmacy Management SaaS (API)
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Multi-tenant pharmacy & prescription platform built for the Ethiopian market with **Laravel 12 + Sanctum**.
+The Vue 3 SPA lives in `../pharmacy_managment_system/pharmacy_managment_system`.
 
-## About Laravel
+Pharmacies manage inventory (batches, expiry, FEFO), sell at the counter and fulfil online orders.
+Hospitals register patients and issue digital prescriptions. Patients search live stock and prices across
+pharmacies, check their prescription, and order online. A platform admin verifies every organization's licence.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Built for Ethiopia
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+| Area | What it means here |
+| --- | --- |
+| Money | All prices in **ETB (Birr)**, stored as `DECIMAL(12,2)` |
+| Phones | Ethio telecom `09…` and Safaricom `07…` validated and normalised to `+2519…`; landlines allowed for organizations |
+| Places | 14 regions/city administrations, major cities, Addis Ababa's 11 sub-cities, woreda (`config/ethiopia.php`) |
+| Licensing | Pharmacies register with an **EFDA licence**, hospitals with an **MoH licence**, optional 10-digit **TIN**; nothing goes live until verified |
+| Payments | Cash, **telebirr**, **CBE Birr**, Chapa, bank transfer, **CBHI/EHIS insurance** |
+| Supply | Batches record the supplier (EPSS, EPHARM, Cadila Ethiopia…) |
+| Catalogue | 57 medicines from the Ethiopian Essential Medicines List, with Amharic category names |
+| Calendar & time | `Africa/Addis_Ababa` timezone; the SPA shows Ethiopian-calendar (E.C.) dates and Amharic UI |
+| Controlled drugs | Narcotics/psychotropics can only be dispensed in person, never ordered online |
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Quick start (Windows + XAMPP)
 
-## Learning Laravel
+Requirements: PHP 8.2+, Composer, MySQL/MariaDB (XAMPP), Node 20.19+ for the frontend.
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+1. Start MySQL from the XAMPP control panel and create the database:
+   ```sql
+   CREATE DATABASE pharmacy_management CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+   ```
+2. Configure and seed:
+   ```bash
+   cp .env.example .env        # then set DB_PORT (this machine's XAMPP MariaDB listens on 3307)
+   composer install
+   php artisan key:generate
+   php artisan migrate:fresh --seed
+   ```
+3. Run the API, the queue worker (notifications, low-stock checks) and the scheduler (daily 06:00 expiry scan):
+   ```bash
+   php artisan serve            # http://127.0.0.1:8000
+   php artisan queue:work       # in a second terminal
+   php artisan schedule:work    # in a third terminal (or: composer dev, which runs all three)
+   ```
+4. Start the SPA (see its README): `npm install && npm run dev` → http://localhost:5173
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+Run the daily housekeeping manually any time: `php artisan pharmacy:scan --sync`.
 
-## Laravel Sponsors
+### Demo accounts
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+Every seeded account uses the password **`Password@123`**.
 
-### Premium Partners
+| Role | Email | Lands on |
+| --- | --- | --- |
+| Platform admin | `admin@medlink.et` | Platform dashboard, approvals, catalogue |
+| Pharmacy admin | `bole.admin@medlink.et` | Bole Medhanit Pharmacy (full catalogue, 30 days of sales) |
+| Pharmacist | `bole.pharmacist@medlink.et` | POS, orders, inventory (read) |
+| Hospital admin | `entoto.admin@medlink.et` | Entoto Hills General Hospital |
+| Doctor | `dr.hana@medlink.et` / `dr.dawit@medlink.et` | Patients, prescriptions |
+| Customer | `abebe@example.com` (has a prescription), `meron@example.com`, `selam@example.com` | Search, cart, orders |
+| Pending pharmacy | `gondar.admin@medlink.et` | "Awaiting verification" screen |
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+Other pharmacies: `piassa.`, `kazanchis.`, `megenagna.`, `adama.`, `hawassa.`, `bahir.` + `admin@` / `pharmacist@medlink.et`.
 
-## Contributing
+## Architecture
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+```
+app/
+├── Support/TenantContext.php        current tenant (follows the signed-in user; jobs can pin one)
+├── Models/Scopes/TenantScope.php    global scope: where tenant_id = current tenant
+├── Models/Concerns/BelongsToTenant  adds the scope + stamps tenant_id on create
+├── Models/Concerns/LogsActivity     created/updated/deleted -> activity_logs (with old/new values)
+├── Policies/                        one per model; tenant ownership re-checked (defence in depth)
+├── Http/Requests/                   validation + authorize() through policies (403 before 422)
+├── Http/Resources/                  every response shape
+├── Http/Controllers/                thin: authorize -> call a service -> return a resource
+├── Services/
+│   ├── Inventory/StockService       receive, adjust, FEFO allocate/deduct, expire batches
+│   ├── Inventory/InventoryService   listings, alerts
+│   ├── Orders/OrderService          online orders, walk-in sales, lifecycle, partial fulfilment
+│   ├── Prescriptions/…Service       issue, verify, dispense accounting, cancel, expire
+│   ├── Reports/                     dashboards, sales/inventory/prescription reports, CSV/PDF export
+│   └── ActivityLogger, Auth/RegistrationService, Users/TeamService, Catalog/PublicSearchService
+├── Jobs/                            CheckLowStock, ScanPharmacyInventory (queued)
+├── Notifications/                   queued, stored with tenant_id (custom TenantDatabaseChannel)
+└── Console/Commands/ScanInventory   `pharmacy:scan`, scheduled daily at 06:00 Addis Ababa
+```
 
-## Code of Conduct
+### Multi-tenancy
+Tenant-owned models (`PharmacyMedicine`, `MedicineBatch`, `StockMovement`, `Order`, `Patient`, `Prescription`, `ActivityLog`)
+use `BelongsToTenant`. Queries — including route-model binding — are automatically limited to the user's tenant,
+so `/api/inventory/{id}` of another pharmacy is a **404**, not a leak. Cross-tenant reads are explicit and rare
+(`Prescription::acrossTenants()` when a pharmacy dispenses a hospital's prescription). Public endpoints run with no tenant
+and filter on `is_public` + active pharmacies. Super admins have no tenant and see everything.
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+### Roles & permissions
+`spatie/laravel-permission`, matrix in `app/Support/Permissions.php`:
+`super_admin`, `pharmacy_admin`, `staff` (pharmacist), `hospital_admin`, `doctor`, `customer`.
+Enforced in three layers: route middleware (`tenant.type:pharmacy`, `role:super_admin`, `active`), form-request
+`authorize()` via policies, and policies again in controllers. The SPA receives the permission list at login to
+render role-based UI — the backend never trusts it.
 
-## Security Vulnerabilities
+### Business rules
+* **FEFO** — `StockService::allocate()` locks sellable batches ordered by expiry date and takes from the earliest first;
+  each order line records exactly which batches supplied it (`order_item_batches`).
+* **No expired medicine is ever sold** — "sellable" means `quantity > 0 AND expiry_date > today`; a batch expiring today
+  is already excluded. Expired batches cannot be received. The daily scan writes them off with an `expired` movement.
+* **Prescription quantity enforced** — online orders verify the code *and* the patient's phone; quantity can never
+  exceed `total - dispensed`, re-checked with row locks at dispense time, across all pharmacies.
+* **Partial fulfilment** — completing with `allow_partial` dispenses what is in stock, charges only for that, marks the
+  order `partially_completed` and the prescription `partially_dispensed`.
+* **Order lifecycle** — `Order::TRANSITIONS` state machine (`pending → confirmed → ready → completed`, plus
+  `partially_completed`, `cancelled`, `rejected`); illegal moves are 422.
+* **Transactions** everywhere stock or prescriptions change (`DB::transaction` + `lockForUpdate`).
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+### API conventions
+* Base URL `/api`, Bearer tokens (Sanctum).
+* Reads return resources: `{ data }` or `{ data, links, meta }` when paginated.
+* Actions return `{ message, data }`.
+* Errors always `{ message, errors? }`: 401 unauthenticated, 403 forbidden (`code: tenant_pending` etc.), 404, 405,
+  422 validation *and* business-rule violations (`BusinessRuleException`), 429 rate limited.
+* Rate limits: login/register 5/min per email, public 60/min, prescription verification 10/min, API 120/min per user.
 
-## License
+### Main endpoints
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+| Area | Endpoints |
+| --- | --- |
+| Public | `GET public/meta, stats, categories, medicines?q&city&sub_city&min_price&max_price&rx&sort, pharmacies, pharmacies/{slug}, pharmacies/{slug}/medicines` · `POST public/prescriptions/verify` |
+| Auth | `POST auth/login, auth/register, auth/register-organization, auth/logout` · `GET auth/me` · `PUT auth/profile, auth/password` |
+| Customer | `GET/POST my/orders` · `GET my/orders/{id}` · `POST my/orders/{id}/cancel` |
+| Pharmacy | `inventory` (CRUD) · `inventory/alerts` · `POST inventory/scan` · `POST inventory/{id}/batches` · `GET batches` · `POST batches/{id}/adjust` · `GET stock-movements` · `orders` + `confirm/ready/complete/reject/cancel` · `GET pos/products` · `POST pos/sales` · `GET pos/prescriptions/{code}` |
+| Hospital | `patients` (CRUD) · `GET/POST prescriptions` · `GET prescriptions/{id}` · `POST prescriptions/{id}/cancel` |
+| Shared | `GET dashboard` · `notifications` (+ read, read-all, unread-count) · `users` · `organization` · `activity-logs` · `reports/{sales,inventory,prescriptions}` · `reports/{type}/export?format=csv\|pdf` |
+| Platform | `medicines`, `categories` (write = super admin) · `admin/tenants` · `PATCH admin/tenants/{id}/status` |
+
+## Tests
+
+```bash
+php artisan test
+```
+36 feature/unit tests (SQLite in memory) cover FEFO deduction order, expired stock never sold, same-day expiry,
+prescription quantity across orders, phone verification, expired prescriptions, partial fulfilment billing,
+order state machine, tenant isolation (inventory, POS, team, audit log), role boundaries, pending-organization
+lock-out and approval, public search visibility, response shapes and Ethiopian phone rules.
+
+## Milestone checklist
+
+| Requirement | Where |
+| --- | --- |
+| Thin controllers, logic in services | `app/Http/Controllers/*`, `app/Services/*` |
+| Tenant isolation enforced globally | `TenantScope`, `BelongsToTenant`, `TenantIsolationTest` |
+| Policies, not inline checks | `app/Policies/*`, form-request `authorize()`, report gates in `AppServiceProvider` |
+| Validation | `app/Http/Requests/*`, `EthiopianPhone`, `UniquePhone` rules |
+| FEFO / no expired sales / Rx quantity / transactions | `StockService`, `OrderService`, `PrescriptionService` + tests |
+| RESTful, consistent responses, proper status codes | `routes/api.php`, Resources, `bootstrap/app.php` exception rendering |
+| Audit logs | `LogsActivity`, `ActivityLogger`, `GET activity-logs` |
+| Notifications: low stock, expiry, order status | `app/Notifications/*`, `app/Jobs/*` |
+| Reports + Excel/PDF export | `ReportService`, `ReportExporter`, `resources/views/reports/table.blade.php` |
+| Background jobs, scheduler, rate limiting | queued notifications/jobs, `routes/console.php`, `AppServiceProvider` |
+| Automated tests | `tests/Feature`, `tests/Unit` |
+
+## Notes
+
+* The pre-rebuild code (old models, controllers, migrations and an uncommitted-changes patch) was moved, not deleted, to
+  `../_legacy_backup/`.
+* `santigarcor/laratrust` was removed; the project standardises on `spatie/laravel-permission`.

@@ -2,90 +2,61 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\Users\SaveUserRequest;
+use App\Http\Resources\UserResource;
 use App\Models\User;
+use App\Services\Users\TeamService;
 use Illuminate\Http\Request;
-use App\Http\Controllers\Controller;
-use App\Http\Requests\StoreUserRequest;
-use App\Http\Requests\UpdateUserRequest;
-use App\Http\Resources\UserListResource;
-// use Dotenv\Validator; // Usually not needed in Controllers
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;
-// use Illuminate\Testing\Fluent\Concerns\Has; // REMOVE THIS - This is for testing only
-use Laratrust\Facades\Laratrust; // Correct Facade path
 
+/**
+ * Team management. Super admins see everyone; tenant admins only their own organization.
+ */
 class UserController extends Controller
 {
+    public function __construct(private TeamService $team) {}
+
     public function index(Request $request)
     {
-        $admin  = User::find(1);
-        $admin->assignRole('pharmacy_admin');
-        if (!auth()->user()->can('user-read')) {
-            return response()->json(['message' => 'permission denied'], 403);
-        }
+        $this->authorize('viewAny', User::class);
+        $actor = $request->user();
 
-        $search = request("search", false);
-        $perPage = request('per_page', 10);
-        $sortField = request('sort_field', 'updated_at');
-        $sortDirection = request('sort_direction', 'desc');
+        $users = User::query()
+            ->with('roles', 'tenant')
+            ->when(! $actor->isSuperAdmin(), fn ($q) => $q->where('tenant_id', $actor->tenant_id))
+            ->when($request->query('tenant_id') && $actor->isSuperAdmin(), fn ($q) => $q->where('tenant_id', $request->query('tenant_id')))
+            ->when($request->query('role'), fn ($q, $role) => $q->role($role))
+            ->when($request->query('status'), fn ($q, $status) => $q->where('status', $status))
+            ->when($request->query('search'), fn ($q, $term) => $q->where(fn ($w) => $w
+                ->where('name', 'like', "%{$term}%")
+                ->orWhere('email', 'like', "%{$term}%")
+                ->orWhere('phone', 'like', "%{$term}%")))
+            ->latest()
+            ->paginate($this->perPage());
 
-        $query = User::query();
-
-
-        // Note: Check if you have a custom scope 'orderedBy', otherwise use 'orderBy'
-        $query->orderBy($sortField, $sortDirection);
-
-        if ($search) {
-            $query->where(function($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('email', 'like', "%{$search}%");
-            });
-        }
-
-        $query->where('id', '!=', Auth::id())
-              ->where('id', '!=', 1);
-              $userWithTenant = User::with('tenant')->find($request->user()->id);
-
-        return UserListResource::collection($query->paginate($perPage));
+        return UserResource::collection($users);
     }
 
-    public function store(StoreUserRequest $request)
+    public function store(SaveUserRequest $request)
     {
-        // if (!Laratrust::hasPermission('user-create')) {
-        //     return response()->json(['message' => 'permission denied'], 403);
-        // }
+        $this->authorize('create', User::class);
+        $user = $this->team->create($request->user(), $request->validated());
 
-        $validated = $request->validated();
-        // $validated['name'] = ucfirst(strtolower($validated['name']));
-        $validated['password'] = Hash::make($validated['password']);
-
-        $user = User::create($validated);
-
-        // Fixed logic: If you want to assign a role to the NEW user
-        // $user->addRole('user');
-
-        return new UserListResource($user);
+        return $this->respond(new UserResource($user), "{$user->name} has been added to the team.", 201);
     }
 
-    public function update(UpdateUserRequest $request, User $user)
+    public function update(SaveUserRequest $request, User $user)
     {
-        if (!Laratrust::hasPermission('update-user')) {
-            return response()->json(['message' => 'permission denied'], 403);
-        }
+        $this->authorize('update', $user);
+        $user = $this->team->update($user, $request->validated());
 
-        $validated = $request->validated();
-        if (!empty($validated['password'])) {
-            $validated['password'] = Hash::make($validated['password']);
-        } else {
-            unset($validated['password']); // Don't overwrite with empty password
-        }
+        return $this->respond(new UserResource($user), 'User updated.');
+    }
 
-        if ($user->id === Auth::id() || $user->id === 1) {
-            return response()->json(['message' => 'you cannot modify this user'], 403);
-        }
+    public function destroy(User $user)
+    {
+        $this->authorize('delete', $user);
+        $this->team->deactivate($user);
 
-        $user->update($validated);
-
-        return new UserListResource($user);
+        return $this->respond(null, "{$user->name} has been deactivated and signed out.");
     }
 }
