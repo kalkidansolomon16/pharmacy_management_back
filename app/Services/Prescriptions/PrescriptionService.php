@@ -7,8 +7,11 @@ use App\Models\Medicine;
 use App\Models\Patient;
 use App\Models\Prescription;
 use App\Models\PrescriptionItem;
+use App\Models\Tenant;
 use App\Models\User;
+use App\Models\Visit;
 use App\Notifications\PrescriptionIssued;
+use App\Notifications\PrescriptionRouted;
 use App\Services\ActivityLogger;
 use App\Support\ReferenceGenerator;
 use Illuminate\Support\Facades\DB;
@@ -31,7 +34,19 @@ class PrescriptionService
             throw BusinessRuleException::withErrors('items', 'Inactive medicines cannot be prescribed: '.$inactive->implode(', '));
         }
 
-        $prescription = DB::transaction(function () use ($doctor, $patient, $data) {
+        // Optional routing to a pharmacy: the hospital's own pharmacy module, or an active partner pharmacy
+        $pharmacy = null;
+        if (! empty($data['pharmacy_id'])) {
+            $pharmacy = Tenant::find($data['pharmacy_id']);
+            $valid = $pharmacy && $pharmacy->isActive()
+                && ($pharmacy->id === $doctor->tenant_id ? $pharmacy->hasModule('pharmacy') : $pharmacy->isPharmacy());
+            if (! $valid) {
+                throw BusinessRuleException::withErrors('pharmacy_id', 'That pharmacy cannot receive e-prescriptions.');
+            }
+        }
+        $visit = ! empty($data['visit_id']) ? Visit::where('patient_id', $patient->id)->findOrFail($data['visit_id']) : null;
+
+        $prescription = DB::transaction(function () use ($doctor, $patient, $data, $pharmacy, $visit) {
             $prescription = Prescription::create([
                 'tenant_id' => $doctor->tenant_id,
                 'doctor_id' => $doctor->id,
@@ -42,6 +57,8 @@ class PrescriptionService
                 'status' => 'active',
                 'issued_at' => now(),
                 'expires_at' => now()->addDays((int) ($data['validity_days'] ?? self::DEFAULT_VALIDITY_DAYS))->endOfDay(),
+                'visit_id' => $visit?->id,
+                'pharmacy_id' => $pharmacy?->id,
             ]);
 
             foreach ($data['items'] as $item) {
@@ -64,6 +81,12 @@ class PrescriptionService
         });
 
         $patient->user?->notify(new PrescriptionIssued($prescription));
+
+        // The pharmacist sees it instantly in the prescription inbox - no paper
+        if ($pharmacy) {
+            User::where('tenant_id', $pharmacy->id)->where('status', 'active')->permission('prescriptions.dispense')->get()
+                ->each->notify(new PrescriptionRouted($prescription->load('patient', 'hospital', 'items')));
+        }
 
         return $prescription->load('items.medicine', 'patient', 'doctor');
     }

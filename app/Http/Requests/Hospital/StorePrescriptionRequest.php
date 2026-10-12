@@ -21,8 +21,11 @@ class StorePrescriptionRequest extends FormRequest
             'diagnosis' => ['nullable', 'string', 'max:1000'],
             'notes' => ['nullable', 'string', 'max:1000'],
             'validity_days' => ['nullable', 'integer', 'min:1', 'max:180'],
+            // Additions: the visit it belongs to, and the pharmacy it is sent to
+            'visit_id' => ['nullable', 'integer'],
+            'pharmacy_id' => ['nullable', 'integer'],
             'items' => ['required', 'array', 'min:1', 'max:15'],
-            'items.*.medicine_id' => ['required', 'integer', 'distinct', 'exists:medicines,id'],
+            'items.*.medicine_id' => ['required', 'integer', 'distinct', Rule::exists('medicines', 'id')->where(fn ($q) => $q->where('review_status', 'approved')->orWhere('created_by_tenant_id', $this->user()->tenant_id))],
             'items.*.dosage' => ['required', 'string', 'max:60'],
             'items.*.frequency' => ['required', 'string', 'max:60'],
             'items.*.duration_days' => ['required', 'integer', 'min:1', 'max:365'],

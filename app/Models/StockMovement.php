@@ -11,9 +11,9 @@ class StockMovement extends Model
 {
     use BelongsToTenant;
 
-    public const TYPES = ['in', 'out', 'adjustment', 'expired', 'return'];
+    public const TYPES = ['in', 'out', 'adjustment', 'expired', 'return', 'transfer_in', 'transfer_out'];
 
-    protected $fillable = ['tenant_id', 'batch_id', 'type', 'quantity', 'reason', 'reference_type', 'reference_id', 'created_by'];
+    protected $fillable = ['tenant_id', 'batch_id', 'type', 'quantity', 'reason', 'reference_type', 'reference_id', 'created_by', 'store_id'];
 
     protected function casts(): array
     {

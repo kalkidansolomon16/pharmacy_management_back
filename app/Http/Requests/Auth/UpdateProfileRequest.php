@@ -19,7 +19,7 @@ class UpdateProfileRequest extends FormRequest
             'phone' => ['nullable', new EthiopianPhone, new UniquePhone($id)],
             'city' => ['nullable', 'string', 'max:80'],
             'address' => ['nullable', 'string', 'max:191'],
-            'locale' => ['nullable', Rule::in(['en', 'am'])],
+            'locale' => ['nullable', Rule::in(['en', 'am', 'om'])],
         ];
     }
 }

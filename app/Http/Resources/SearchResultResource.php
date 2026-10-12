@@ -15,6 +15,7 @@ class SearchResultResource extends MedicineResource
             'min_price' => $this->min_price !== null ? (float) $this->min_price : null,
             'max_price' => $this->max_price !== null ? (float) $this->max_price : null,
             'pharmacies_count' => (int) $this->pharmacies_count,
+            'nearest_km' => $this->whenHas('nearest_km'), // only on a near-me search
             'offers' => $this->whenLoaded('offers', fn () => $this->offers->map(fn ($listing) => [
                 'pharmacy_medicine_id' => $listing->id,
                 'price' => (float) $listing->price,

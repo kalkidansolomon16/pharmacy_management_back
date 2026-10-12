@@ -61,7 +61,7 @@ class CheckLowStock implements ShouldQueue
 
         User::where('tenant_id', $this->tenantId)
             ->where('status', 'active')
-            ->role([User::ROLE_PHARMACY_ADMIN, User::ROLE_STAFF])
+            ->permission('inventory.view') // anyone who works with stock, whatever their role
             ->get()
             ->each->notify(new LowStockAlert($low));
     }

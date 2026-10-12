@@ -42,6 +42,7 @@ class PosController extends Controller
     {
         $this->authorize('sell', Order::class);
         $order = $this->orders->sellWalkIn($request->user(), $request->validated());
+        $order->loadMissing('invoice');
 
         return $this->respond(new OrderResource($order), "Sale {$order->order_number} completed - ETB ".number_format((float) $order->total_amount, 2), 201);
     }

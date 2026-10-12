@@ -22,22 +22,22 @@ class PharmacyMedicinePolicy
 
     public function create(User $user): bool
     {
-        return $user->can('inventory.manage');
+        return $user->can('inventory.create');
     }
 
     public function update(User $user, PharmacyMedicine $listing): bool
     {
-        return $user->can('inventory.manage') && $user->belongsToTenant($listing->tenant_id);
+        return $user->can('inventory.update') && $user->belongsToTenant($listing->tenant_id);
     }
 
     public function delete(User $user, PharmacyMedicine $listing): bool
     {
-        return $this->update($user, $listing);
+        return $user->can('inventory.delete') && $user->belongsToTenant($listing->tenant_id);
     }
 
     /** Receiving stock and adjusting batches. */
     public function manageStock(User $user, PharmacyMedicine $listing): bool
     {
-        return $this->update($user, $listing);
+        return $user->can('inventory.stock') && $user->belongsToTenant($listing->tenant_id);
     }
 }

@@ -25,7 +25,7 @@ class SaveListingRequest extends FormRequest
         return [
             'medicine_id' => [
                 Rule::requiredIf($creating), Rule::prohibitedIf(! $creating),
-                Rule::exists('medicines', 'id')->where('is_active', true),
+                Rule::exists('medicines', 'id')->where('is_active', true)->where(fn ($q) => $q->where('review_status', 'approved')->orWhere('created_by_tenant_id', $this->user()->tenant_id)),
                 Rule::unique('pharmacy_medicines', 'medicine_id')->where('tenant_id', app(TenantContext::class)->id()),
             ],
             'price' => ['required', 'numeric', 'min:0.01', 'max:1000000'],

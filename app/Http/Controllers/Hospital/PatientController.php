@@ -46,6 +46,13 @@ class PatientController extends Controller
             'prescriptions' => PrescriptionResource::collection(
                 $patient->prescriptions()->with('doctor:id,name', 'items.medicine')->latest()->limit(20)->get()
             ),
+            'visits' => \App\Http\Resources\VisitResource::collection(
+                $patient->visits()->with('doctor:id,name')->latest('checked_in_at')->limit(20)->get()
+            ),
+            'memberships' => \App\Http\Resources\PayerMembershipResource::collection($patient->memberships()->with('payer')->get()),
+            'lab_orders' => \App\Http\Resources\LabOrderResource::collection(
+                $patient->labOrders()->with('items.test')->latest()->limit(20)->get()
+            ),
         ]);
     }
 

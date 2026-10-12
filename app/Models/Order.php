@@ -12,7 +12,7 @@ class Order extends Model
 {
     use BelongsToTenant, HasFactory;
 
-    public const PAYMENT_METHODS = ['cash', 'telebirr', 'cbe_birr', 'chapa', 'bank_transfer', 'insurance'];
+    public const PAYMENT_METHODS = ['cash', 'telebirr', 'cbe_birr', 'mpesa', 'chapa', 'bank_transfer', 'insurance', 'credit'];
 
     /** Allowed status transitions (the order lifecycle). */
     public const TRANSITIONS = [
@@ -33,6 +33,7 @@ class Order extends Model
         'order_number', 'tenant_id', 'user_id', 'created_by', 'prescription_id', 'channel', 'status',
         'customer_name', 'customer_phone', 'fulfillment', 'delivery_address', 'payment_method',
         'payment_status', 'subtotal', 'discount', 'total_amount', 'notes', 'cancel_reason', 'fulfilled_at',
+        'tax_total', 'store_id', 'membership_id', 'client_uuid',
     ];
 
     protected function casts(): array
@@ -40,6 +41,7 @@ class Order extends Model
         return [
             'subtotal' => 'decimal:2',
             'discount' => 'decimal:2',
+            'tax_total' => 'decimal:2',
             'total_amount' => 'decimal:2',
             'fulfilled_at' => 'datetime',
         ];
@@ -78,5 +80,20 @@ class Order extends Model
     public function isOpen(): bool
     {
         return in_array($this->status, self::OPEN_STATUSES, true);
+    }
+
+    public function invoice(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(Invoice::class)->withoutGlobalScopes()->latestOfMany();
+    }
+
+    public function store(): BelongsTo
+    {
+        return $this->belongsTo(Store::class);
+    }
+
+    public function membership(): BelongsTo
+    {
+        return $this->belongsTo(PayerMembership::class, 'membership_id')->withoutGlobalScopes();
     }
 }

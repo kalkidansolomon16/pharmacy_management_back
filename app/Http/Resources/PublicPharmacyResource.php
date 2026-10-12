@@ -29,6 +29,7 @@ class PublicPharmacyResource extends JsonResource
             'delivery_available' => $this->delivery_available,
             'description' => $this->description,
             'medicines_count' => $this->whenCounted('pharmacyMedicines'),
+            'distance_km' => $this->whenHas('distance_km'), // only on the nearby search
         ];
     }
 }

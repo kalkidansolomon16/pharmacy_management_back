@@ -16,6 +16,7 @@ class MedicineBatch extends Model
     protected $fillable = [
         'tenant_id', 'pharmacy_medicine_id', 'batch_number', 'initial_quantity', 'quantity',
         'expiry_date', 'purchase_price', 'supplier', 'received_at',
+        'store_id', 'supplier_id', 'gtin',
     ];
 
     protected function casts(): array
@@ -64,5 +65,20 @@ class MedicineBatch extends Model
     public function isExpired(): bool
     {
         return $this->expiry_date->lte(today());
+    }
+
+    public function store(): BelongsTo
+    {
+        return $this->belongsTo(Store::class);
+    }
+
+    public function supplierRecord(): BelongsTo
+    {
+        return $this->belongsTo(Supplier::class, 'supplier_id');
+    }
+
+    public function scopeInStore(Builder $query, ?int $storeId): Builder
+    {
+        return $storeId ? $query->where('store_id', $storeId) : $query;
     }
 }

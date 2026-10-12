@@ -7,6 +7,7 @@ use App\Models\MedicineBatch;
 use App\Models\OrderItem;
 use App\Models\PharmacyMedicine;
 use App\Models\StockMovement;
+use App\Models\Store;
 use App\Services\ActivityLogger;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
@@ -36,6 +37,9 @@ class StockService
                 'purchase_price' => $data['purchase_price'],
                 'supplier' => $data['supplier'] ?? null,
                 'received_at' => $data['received_at'] ?? today(),
+                'store_id' => $data['store_id'] ?? Store::defaultFor($listing->tenant_id)->id,
+                'supplier_id' => $data['supplier_id'] ?? null,
+                'gtin' => $data['gtin'] ?? null,
             ]);
 
             $this->record($batch, 'in', $batch->quantity, $data['reason'] ?? 'Stock received'.($batch->supplier ? " from {$batch->supplier}" : ''));
@@ -80,13 +84,15 @@ class StockService
     /**
      * Pick batches First-Expiry-First-Out. Must run inside a transaction: rows are locked.
      * Expired batches are never selected, so expired medicine can never be sold.
+     * With a store, only that store's shelves are used (e.g. the OPD dispensary, not the main store).
      *
      * @return array<int, array{batch: MedicineBatch, quantity: int}>
      */
-    public function allocate(PharmacyMedicine $listing, int $quantity, bool $allowPartial = false): array
+    public function allocate(PharmacyMedicine $listing, int $quantity, bool $allowPartial = false, ?int $storeId = null): array
     {
         $batches = MedicineBatch::withoutGlobalScopes()
             ->where('pharmacy_medicine_id', $listing->id)
+            ->inStore($storeId)
             ->sellable()
             ->fefo()
             ->lockForUpdate()
@@ -154,11 +160,12 @@ class StockService
         return $count;
     }
 
-    private function record(MedicineBatch $batch, string $type, int $quantity, ?string $reason = null, ?Model $reference = null): StockMovement
+    public function record(MedicineBatch $batch, string $type, int $quantity, ?string $reason = null, ?Model $reference = null): StockMovement
     {
         return StockMovement::create([
             'tenant_id' => $batch->tenant_id,
             'batch_id' => $batch->id,
+            'store_id' => $batch->store_id,
             'type' => $type,
             'quantity' => $quantity,
             'reason' => $reason,

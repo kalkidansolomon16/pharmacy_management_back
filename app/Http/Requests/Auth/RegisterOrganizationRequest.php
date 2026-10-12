@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Auth;
 
+use App\Models\Tenant;
 use App\Rules\EthiopianPhone;
 use App\Rules\UniquePhone;
 use Illuminate\Foundation\Http\FormRequest;
@@ -19,7 +20,7 @@ class RegisterOrganizationRequest extends FormRequest
             'organization.license_number' => ['required', 'string', 'max:60'],
             'organization.tin_number' => ['nullable', 'digits:10'],
             'organization.phone' => ['required', EthiopianPhone::orLandline()],
-            'organization.email' => ['nullable', 'email'],
+            'organization.email' => ['nullable', 'email', 'max:191', Tenant::uniqueEmailRule()],
             'organization.region' => ['required', 'string', 'max:80'],
             'organization.city' => ['required', 'string', 'max:80'],
             'organization.sub_city' => ['nullable', 'string', 'max:80'],
@@ -50,8 +51,19 @@ class RegisterOrganizationRequest extends FormRequest
         ];
     }
 
+    public function messages(): array
+    {
+        return ['organization.email.unique' => 'Another organization already uses this email. Use your own organization email.'];
+    }
+
     protected function prepareForValidation(): void
     {
+        $org = $this->input('organization', []);
+        if (is_array($org) && ! empty($org['email']) && is_string($org['email'])) {
+            $org['email'] = strtolower(trim($org['email']));
+            $this->merge(['organization' => $org]);
+        }
+
         $admin = $this->input('admin', []);
         if (isset($admin['email'])) {
             $admin['email'] = strtolower(trim($admin['email']));

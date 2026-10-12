@@ -20,7 +20,7 @@ class RegisterCustomerRequest extends FormRequest
             'phone' => ['required', new EthiopianPhone, new UniquePhone],
             'city' => ['nullable', 'string', 'max:80'],
             'address' => ['nullable', 'string', 'max:191'],
-            'locale' => ['nullable', Rule::in(['en', 'am'])],
+            'locale' => ['nullable', Rule::in(['en', 'am', 'om'])],
             'password' => $this->passwordRules(),
         ];
     }

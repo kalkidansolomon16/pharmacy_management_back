@@ -29,6 +29,10 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'active' => EnsureAccountIsActive::class,
             'tenant.type' => EnsureTenantType::class,
+            'module' => \App\Http\Middleware\EnsureModuleEnabled::class,
+            'subscription' => \App\Http\Middleware\EnsureSubscriptionActive::class,
+            'full.token' => \App\Http\Middleware\RestrictIntegrationTokens::class,
+            'abilities' => \Laravel\Sanctum\Http\Middleware\CheckAbilities::class,
             'role' => RoleMiddleware::class,
             'permission' => PermissionMiddleware::class,
         ]);

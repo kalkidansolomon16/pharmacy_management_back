@@ -159,6 +159,33 @@ lock-out and approval, public search visibility, response shapes and Ethiopian p
 | Background jobs, scheduler, rate limiting | queued notifications/jobs, `routes/console.php`, `AppServiceProvider` |
 | Automated tests | `tests/Feature`, `tests/Unit` |
 
+## Hospital, billing & SaaS extensions
+
+These were added on top of the original system. Nothing was removed.
+
+| Gap | What exists now |
+|---|---|
+| Pharmacy and hospital disconnected | Visits (reception → triage → doctor → lab → cashier), e-prescriptions routed to the in-house or a partner pharmacy (e-Prescription inbox), live stock shown while prescribing |
+| Power / network outages | PWA app shell (`public/sw.js`); offline counter sales are queued on the device and replayed with an idempotent `client_uuid` |
+| e-Invoicing | Gapless numbers per Ethiopian fiscal year, VAT 15% / TOT, IRN + RRN + QR, credit notes, `einvoice:sync` retries every 5 minutes |
+| Insurance / CBHI / credit | Payers, members, co-pay split, coverage rules, pre-authorization, monthly claims (PDF/CSV), receivables aging |
+| Deep inventory | Stores, FEFO transfers, purchase orders with GS1 DataMatrix receiving, supplier returns, controlled-drug register |
+| Localization | Ethiopian calendar, Amharic and Afaan Oromoo, M-Pesa / telebirr / CBE Birr |
+| Interoperability | HL7 FHIR R4 read API (`/api/fhir`), integration tokens limited to `fhir:read`, DHIS2 dataValueSet export |
+| SaaS | Plans, trials, subscriptions (read-only after a 7-day grace period), modules per organization, encrypted nightly backups |
+| Usability & security | Role dashboards, keyboard shortcuts (`?`), 80 mm receipts, help centre, per-device session sign-out |
+| Owner view | Multi-branch owner dashboard that works on a phone |
+
+New roles: nurse, receptionist, lab_technician, cashier, owner.
+
+Demo accounts (password `Password@123`, all `@medlink.et`): `reception`, `nurse`, `dr.hana`, `lab`, `cashier`, `entoto.pharmacist`, `owner`.
+
+**Upgrading an existing database:** run `php artisan migrate`, then `php artisan db:seed --class=RolesAndPermissionsSeeder` and `--class=PlatformSeeder`, and optionally `--class=OperationsDemoSeeder`. `php artisan billing:backfill-invoices` creates non-fiscal invoices for older sales so reports cover the full history.
+
+**Limits:**
+- The Ministry of Revenue integration runs against a local sandbox (`EINVOICE_DRIVER=sandbox`). Real EIRS credentials and the official API spec still have to be configured for `MorEInvoiceGateway`.
+- DHIS2 data-element codes are placeholders. They have to be mapped to your woreda or zone dataset.
+
 ## Notes
 
 * The pre-rebuild code (old models, controllers, migrations and an uncommitted-changes patch) was moved, not deleted, to

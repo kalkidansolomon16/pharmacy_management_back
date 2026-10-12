@@ -37,7 +37,16 @@ class SaveUserRequest extends FormRequest
             'license_number' => ['nullable', 'string', 'max:60'],
             'tenant_id' => [Rule::requiredIf(fn () => $this->user()->isSuperAdmin() && $this->input('role') !== User::ROLE_SUPER_ADMIN), 'nullable', 'exists:tenants,id'],
             'password' => [$creating ? 'required' : 'nullable', 'string', Password::min(8)->letters()->mixedCase()->numbers()],
+            // Extra permissions on top of the role (e.g. let a pharmacist add medicines). Only ones the admin holds.
+            'permissions' => ['sometimes', 'array'],
+            'permissions.*' => [Rule::in($this->grantablePermissions())],
         ];
+    }
+
+    /** @return string[] permissions this admin may give individual team members */
+    public function grantablePermissions(): array
+    {
+        return array_values(array_filter(array_keys(\App\Support\Permissions::GRANTABLE), fn ($p) => $this->user()->can($p) || $this->user()->isSuperAdmin()));
     }
 
     public function assignableRoles(): array
@@ -45,12 +54,12 @@ class SaveUserRequest extends FormRequest
         $actor = $this->user();
 
         if ($actor->isSuperAdmin()) {
-            $tenantType = Tenant::find($this->input('tenant_id'))?->type;
+            $tenant = Tenant::find($this->input('tenant_id'));
 
-            return $tenantType ? User::TENANT_ROLES[$tenantType] : [User::ROLE_SUPER_ADMIN];
+            return $tenant ? User::assignableRolesFor($tenant) : [User::ROLE_SUPER_ADMIN];
         }
 
-        return User::TENANT_ROLES[$actor->tenant?->type] ?? [];
+        return $actor->tenant ? User::assignableRolesFor($actor->tenant) : [];
     }
 
     protected function prepareForValidation(): void

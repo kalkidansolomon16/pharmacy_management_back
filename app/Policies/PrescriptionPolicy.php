@@ -31,7 +31,7 @@ class PrescriptionPolicy
             return false;
         }
 
-        return $prescription->doctor_id === $user->id || $user->hasRole(User::ROLE_HOSPITAL_ADMIN);
+        return $prescription->doctor_id === $user->id || $user->can('organization.manage');
     }
 
     public function dispense(User $user): bool

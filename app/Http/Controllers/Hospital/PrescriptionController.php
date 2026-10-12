@@ -7,7 +7,6 @@ use App\Http\Requests\Hospital\StorePrescriptionRequest;
 use App\Http\Resources\PrescriptionResource;
 use App\Models\Patient;
 use App\Models\Prescription;
-use App\Models\User;
 use App\Services\Prescriptions\PrescriptionService;
 use Illuminate\Http\Request;
 
@@ -24,7 +23,7 @@ class PrescriptionController extends Controller
             ->with('patient', 'doctor:id,name')
             ->withCount('items')
             // Doctors see their own prescriptions by default; hospital admins see everyone's
-            ->when($user->hasRole(User::ROLE_DOCTOR) && ! $request->boolean('all'), fn ($q) => $q->where('doctor_id', $user->id))
+            ->when($user->isPrescriber() && ! $request->boolean('all'), fn ($q) => $q->where('doctor_id', $user->id))
             ->when($request->query('doctor_id'), fn ($q, $id) => $q->where('doctor_id', $id))
             ->when($request->query('status'), fn ($q, $status) => $q->where('status', $status))
             ->when($request->query('search'), fn ($q, $term) => $q->where(fn ($w) => $w

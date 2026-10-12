@@ -25,11 +25,48 @@ class User extends Authenticatable
 
     public const ROLE_CUSTOMER = 'customer';
 
+    public const ROLE_NURSE = 'nurse';
+
+    public const ROLE_RECEPTIONIST = 'receptionist';
+
+    public const ROLE_LAB_TECHNICIAN = 'lab_technician';
+
+    public const ROLE_CASHIER = 'cashier';
+
+    public const ROLE_OWNER = 'owner';
+
     /** Roles a tenant admin may grant, per tenant type. */
     public const TENANT_ROLES = [
         Tenant::TYPE_PHARMACY => [self::ROLE_PHARMACY_ADMIN, self::ROLE_STAFF],
         Tenant::TYPE_HOSPITAL => [self::ROLE_HOSPITAL_ADMIN, self::ROLE_DOCTOR],
     ];
+
+    /** Extra roles that become available when an organization uses a module. */
+    public const MODULE_ROLES = [
+        'clinical' => [self::ROLE_DOCTOR, self::ROLE_NURSE, self::ROLE_RECEPTIONIST],
+        'lab' => [self::ROLE_LAB_TECHNICIAN],
+        'pharmacy' => [self::ROLE_STAFF],
+        'billing' => [self::ROLE_CASHIER],
+    ];
+
+    /** A clinician who writes prescriptions (the Doctor role or any custom role with that permission). */
+    public function isPrescriber(): bool
+    {
+        return $this->can('prescriptions.create');
+    }
+
+    /** Every role an admin of this organization may grant: type roles + module roles + owner. */
+    public static function assignableRolesFor(Tenant $tenant): array
+    {
+        $roles = self::TENANT_ROLES[$tenant->type] ?? [];
+        foreach ($tenant->enabledModules() as $module) {
+            $roles = array_merge($roles, self::MODULE_ROLES[$module] ?? []);
+        }
+
+        $custom = Role::where('tenant_id', $tenant->id)->pluck('name')->all();
+
+        return array_values(array_unique([...$roles, self::ROLE_OWNER, ...$custom]));
+    }
 
     protected string $guard_name = 'web';
 
