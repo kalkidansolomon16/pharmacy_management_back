@@ -38,6 +38,15 @@ class OrderResource extends JsonResource
                 'status' => $this->prescription->status,
             ] : null),
             'created_by' => $this->whenLoaded('creator', fn () => $this->creator?->name),
+            'tax_total' => (float) $this->tax_total,
+            'client_uuid' => $this->client_uuid,
+            // Fiscal receipt data (Ministry of Revenue e-invoice)
+            'invoice' => $this->whenLoaded('invoice', fn () => $this->invoice ? [
+                'id' => $this->invoice->id, 'invoice_number' => $this->invoice->invoice_number,
+                'tax_total' => (float) $this->invoice->tax_total, 'total' => (float) $this->invoice->total,
+                'payer_share' => (float) $this->invoice->payer_share, 'patient_share' => (float) $this->invoice->patient_share,
+                'fiscal' => ['status' => $this->invoice->fiscal_status, 'irn' => $this->invoice->irn, 'rrn' => $this->invoice->rrn, 'qr' => $this->invoice->fiscal_qr],
+            ] : null),
         ];
     }
 }

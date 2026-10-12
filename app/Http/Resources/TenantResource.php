@@ -17,6 +17,8 @@ class TenantResource extends JsonResource
             'slug' => $this->slug,
             'type' => $this->type,
             'status' => $this->status,
+            'status_reason' => $this->when($private, $this->status_reason),
+            'status_changed_at' => $this->when($private, $this->status_changed_at),
             'phone' => $this->phone,
             'email' => $this->email,
             'region' => $this->region,
@@ -36,6 +38,11 @@ class TenantResource extends JsonResource
             'created_at' => $this->created_at,
             'users_count' => $this->whenCounted('users'),
             'medicines_count' => $this->whenCounted('pharmacyMedicines'),
+            'parent_id' => $this->parent_id,
+            'modules' => $this->enabledModules(),
+            'tax_regime' => $this->when($private, $this->tax_regime),
+            'vat_number' => $this->when($private, $this->vat_number),
+            'settings' => $this->when($private, fn () => array_merge(\App\Models\Tenant::DEFAULT_SETTINGS, $this->settings ?? [])),
         ];
     }
 }

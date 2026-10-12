@@ -112,7 +112,7 @@ class InventoryController extends Controller
     /** Run the daily scan now (expire batches, send alerts). */
     public function scan(Request $request)
     {
-        $this->authorize('create', PharmacyMedicine::class);
+        abort_unless($request->user()->can('inventory.stock'), 403, 'You need the “Receive stock & adjust batches” permission.');
         ScanPharmacyInventory::dispatchSync($request->user()->tenant_id);
 
         return $this->respond($this->inventory->alerts(0), 'Inventory scan complete. Expired batches were written off and alerts sent.');

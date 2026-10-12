@@ -19,11 +19,11 @@ class PatientPolicy
 
     public function create(User $user): bool
     {
-        return $user->can('patients.manage');
+        return $user->can('patients.create');
     }
 
     public function update(User $user, Patient $patient): bool
     {
-        return $user->can('patients.manage') && $user->belongsToTenant($patient->tenant_id);
+        return $user->can('patients.update') && $user->belongsToTenant($patient->tenant_id);
     }
 }

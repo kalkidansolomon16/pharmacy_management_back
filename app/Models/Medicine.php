@@ -16,7 +16,10 @@ class Medicine extends Model
     protected $fillable = [
         'category_id', 'generic_name', 'brand_name', 'manufacturer', 'dosage_form', 'strength', 'unit',
         'barcode', 'prescription_required', 'is_controlled', 'storage_conditions', 'description', 'is_active',
+        'tax_category', 'created_by_tenant_id', 'created_by', 'review_status', 'review_note', 'reviewed_at',
     ];
+
+    public const REVIEW_STATUSES = ['approved', 'pending', 'rejected'];
 
     protected function casts(): array
     {
@@ -24,7 +27,32 @@ class Medicine extends Model
             'prescription_required' => 'boolean',
             'is_controlled' => 'boolean',
             'is_active' => 'boolean',
+            'reviewed_at' => 'datetime',
         ];
+    }
+
+    public function contributor(): BelongsTo
+    {
+        return $this->belongsTo(Tenant::class, 'created_by_tenant_id');
+    }
+
+    /**
+     * What a user may see and use: the approved shared catalogue plus their own organization's
+     * submissions (pending or rejected). The platform team sees everything.
+     */
+    public function scopeVisibleTo(Builder $query, ?User $user): Builder
+    {
+        if ($user?->isSuperAdmin()) {
+            return $query;
+        }
+
+        return $query->where(fn ($q) => $q->where('medicines.review_status', 'approved')
+            ->when($user?->tenant_id, fn ($w, $tenantId) => $w->orWhere('medicines.created_by_tenant_id', $tenantId)));
+    }
+
+    public function isApproved(): bool
+    {
+        return $this->review_status === 'approved';
     }
 
     public function category(): BelongsTo

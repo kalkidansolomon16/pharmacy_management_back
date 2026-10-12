@@ -5,16 +5,20 @@ namespace App\Services\Orders;
 use App\Exceptions\BusinessRuleException;
 use App\Jobs\CheckLowStock;
 use App\Models\Order;
+use App\Models\PayerMembership;
 use App\Models\PharmacyMedicine;
 use App\Models\Prescription;
+use App\Models\Store;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Notifications\NewOrderReceived;
 use App\Notifications\OrderStatusChanged;
 use App\Services\ActivityLogger;
+use App\Services\Billing\BillingService;
 use App\Services\Inventory\StockService;
 use App\Services\Prescriptions\PrescriptionService;
 use App\Support\ReferenceGenerator;
+use App\Support\TaxCalculator;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 
@@ -24,6 +28,7 @@ class OrderService
         private StockService $stock,
         private PrescriptionService $prescriptions,
         private ActivityLogger $logger,
+        private BillingService $billing,
     ) {}
 
     /**
@@ -77,13 +82,27 @@ class OrderService
     {
         $pharmacy = $staff->tenant;
 
+        // Offline sales are re-sent when the connection returns: the same device id is recorded only once
+        if (! empty($data['client_uuid']) && ($existing = Order::withoutGlobalScopes()->where('client_uuid', $data['client_uuid'])->first())) {
+            return $existing->fresh(['items.medicine', 'items.allocations.batch', 'creator']);
+        }
+
+        $storeId = ! empty($data['store_id']) ? Store::where('tenant_id', $pharmacy->id)->findOrFail($data['store_id'])->id : null;
+        $membership = null;
+        if (! empty($data['membership_id'])) {
+            $membership = PayerMembership::with('payer')->where('tenant_id', $pharmacy->id)->findOrFail($data['membership_id']);
+            if (! $membership->isValid()) {
+                throw BusinessRuleException::withErrors('membership_id', 'This insurance / credit coverage is not active.');
+            }
+        }
+
         $prescription = ! empty($data['prescription_code'])
             ? $this->prescriptions->findDispensable($data['prescription_code'])
             : null;
 
         $lines = $this->buildLines($pharmacy, $data['items'], $prescription, online: false);
 
-        $order = DB::transaction(function () use ($staff, $pharmacy, $prescription, $lines, $data) {
+        $order = DB::transaction(function () use ($staff, $pharmacy, $prescription, $lines, $data, $storeId, $membership) {
             $order = $this->createOrder($pharmacy, $lines, [
                 'created_by' => $staff->id,
                 'prescription_id' => $prescription?->id,
@@ -94,9 +113,13 @@ class OrderService
                 'payment_method' => $data['payment_method'] ?? 'cash',
                 'discount' => $data['discount'] ?? 0,
                 'notes' => $data['notes'] ?? null,
+                'store_id' => $storeId,
+                'membership_id' => $membership?->id,
+                'client_uuid' => $data['client_uuid'] ?? null,
             ]);
 
             $this->dispense($order, allowPartial: false);
+            $this->billing->invoiceForOrder($order->refresh());
             $this->logger->log('sale_completed', $order, ['total' => $order->total_amount], "Walk-in sale {$order->order_number}");
 
             return $order;
@@ -154,6 +177,7 @@ class OrderService
             if ($paymentStatus) {
                 $locked->update(['payment_status' => $paymentStatus]);
             }
+            $this->billing->invoiceForOrder($locked->refresh());
             $this->logger->log('order_'.$locked->status, $locked, [
                 'total' => $locked->total_amount,
                 'allow_partial' => $allowPartial,
@@ -200,7 +224,7 @@ class OrderService
                 $wanted = min($wanted, $remaining);
             }
 
-            $allocations = $wanted > 0 ? $this->stock->allocate($item->pharmacyMedicine, $wanted, $allowPartial) : [];
+            $allocations = $wanted > 0 ? $this->stock->allocate($item->pharmacyMedicine, $wanted, $allowPartial, $order->store_id) : [];
             $fulfilled = $this->stock->deduct($item, $allocations, $order);
 
             if ($item->prescriptionItem && $fulfilled > 0) {
@@ -220,10 +244,13 @@ class OrderService
             throw BusinessRuleException::withErrors('stock', 'Nothing could be dispensed: no sellable stock is left for these items.');
         }
 
+        $tax = $this->taxFor($order->pharmacy()->first(), $order->items->map(fn ($i) => [(float) $i->line_total, $i->pharmacyMedicine->medicine->tax_category ?? 'exempt']));
+
         $order->update([
             'status' => $everythingFulfilled ? 'completed' : 'partially_completed',
             'subtotal' => $subtotal,
-            'total_amount' => max(0, $subtotal - (float) $order->discount),
+            'tax_total' => $tax,
+            'total_amount' => max(0, $subtotal + $tax - (float) $order->discount),
             'fulfilled_at' => now(),
             'payment_status' => $order->channel === 'walk_in' ? 'paid' : $order->payment_status,
         ]);
@@ -327,12 +354,15 @@ class OrderService
         $subtotal = collect($lines)->sum(fn ($l) => $l['quantity'] * (float) $l['listing']->price);
         $discount = min((float) Arr::get($attributes, 'discount', 0), $subtotal);
 
+        $tax = $this->taxFor($pharmacy, collect($lines)->map(fn ($l) => [$l['quantity'] * (float) $l['listing']->price, $l['listing']->medicine->tax_category ?? 'exempt']));
+
         $order = Order::create($attributes + [
             'order_number' => ReferenceGenerator::orderNumber(),
             'tenant_id' => $pharmacy->id,
             'subtotal' => $subtotal,
             'discount' => $discount,
-            'total_amount' => $subtotal - $discount,
+            'tax_total' => $tax,
+            'total_amount' => $subtotal + $tax - $discount,
         ]);
 
         foreach ($lines as $line) {
@@ -349,11 +379,17 @@ class OrderService
         return $order;
     }
 
+    /** VAT / TOT on sale lines given as [net amount, tax category] pairs. */
+    private function taxFor(Tenant $pharmacy, \Illuminate\Support\Collection $lines): float
+    {
+        return round($lines->sum(fn ($l) => TaxCalculator::line($pharmacy, (float) $l[0], $l[1])['tax']), 2);
+    }
+
     private function notifyPharmacy(Order $order): void
     {
         User::where('tenant_id', $order->tenant_id)
             ->where('status', 'active')
-            ->role([User::ROLE_PHARMACY_ADMIN, User::ROLE_STAFF])
+            ->permission('orders.view') // anyone who handles orders, whatever their role
             ->get()
             ->each->notify(new NewOrderReceived($order));
     }

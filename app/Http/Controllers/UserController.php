@@ -21,7 +21,7 @@ class UserController extends Controller
         $actor = $request->user();
 
         $users = User::query()
-            ->with('roles', 'tenant')
+            ->with('roles', 'tenant', 'permissions')
             ->when(! $actor->isSuperAdmin(), fn ($q) => $q->where('tenant_id', $actor->tenant_id))
             ->when($request->query('tenant_id') && $actor->isSuperAdmin(), fn ($q) => $q->where('tenant_id', $request->query('tenant_id')))
             ->when($request->query('role'), fn ($q, $role) => $q->role($role))
@@ -33,7 +33,24 @@ class UserController extends Controller
             ->latest()
             ->paginate($this->perPage());
 
-        return UserResource::collection($users);
+        // Extra permissions this admin may give individual team members (only ones the admin holds)
+        $grantable = collect(\App\Support\Permissions::GRANTABLE)
+            ->filter(fn ($label, $permission) => $actor->isSuperAdmin() || $actor->can($permission))
+            ->map(fn ($label, $permission) => ['value' => $permission, 'label' => $label])
+            ->values();
+
+        return UserResource::collection($users)->additional(['meta' => [
+            'grantable_permissions' => $grantable,
+            // Staff accounts used / allowed by the plan (null limit = not limited)
+            'seats' => $actor->tenant ? app(\App\Services\Platform\PlanLimits::class)->usage($actor->tenant)['users'] : null,
+            // Roles this admin may give in their organization (depends on its type and switched-on modules)
+            'assignable_roles' => $actor->tenant ? User::assignableRolesFor($actor->tenant) : [],
+            'role_labels' => \App\Models\Role::whereIn('name', $actor->tenant ? User::assignableRolesFor($actor->tenant) : [])->get()->mapWithKeys(fn ($r) => [$r->name => $r->displayName()]),
+            // Which of the grantable permissions each role already includes
+            // (read from the live roles, which the platform team and admins can edit)
+            'role_includes' => collect(array_keys(\App\Support\Permissions::GRANTABLE))
+                ->mapWithKeys(fn ($p) => [$p => \App\Models\Role::whereHas('permissions', fn ($q) => $q->where('name', $p))->pluck('name')->values()]),
+        ]]);
     }
 
     public function store(SaveUserRequest $request)

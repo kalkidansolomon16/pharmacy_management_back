@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\Order;
 use App\Models\Prescription;
-use App\Models\User;
 use App\Services\Reports\DashboardService;
 use App\Services\Reports\ReportExporter;
 use App\Services\Reports\ReportService;
@@ -54,8 +53,51 @@ class ReportController extends Controller
             'sales' => $this->exportSales($request, $format, $from, $to, $period),
             'inventory' => $this->exportInventory($format),
             'prescriptions' => $this->exportPrescriptions($request, $format, $from, $to, $period),
+            'financial' => $this->exportFinancial($format, $from, $to, $period),
             default => abort(404),
         };
+    }
+
+    /** Invoiced, collected, owed and tax collected (billing module). */
+    public function financial(Request $request, \App\Services\Reports\FinancialReportService $financial)
+    {
+        Gate::authorize('reports.financial');
+        [$from, $to] = $this->range($request);
+
+        return $this->respond($financial->summary($from, $to));
+    }
+
+    /** Monthly HMIS / DHIS2 report (?month=YYYY-MM). ?format=dhis2 downloads the dataValueSets JSON. */
+    public function dhis2(Request $request, \App\Services\Reports\Dhis2ReportService $dhis2)
+    {
+        Gate::authorize('reports.dhis2');
+        $month = \Carbon\CarbonImmutable::parse(($request->validate(['month' => ['nullable', 'date_format:Y-m']])['month'] ?? now()->format('Y-m')).'-01');
+        $report = $dhis2->monthly($request->user()->tenant, $month);
+
+        if ($request->query('format') === 'dhis2') {
+            return response()->streamDownload(fn () => print (json_encode($report['dhis2'], JSON_PRETTY_PRINT)),
+                'dhis2-dataValueSet-'.$report['period'].'.json', ['Content-Type' => 'application/json']);
+        }
+
+        return $this->respond($report);
+    }
+
+    private function exportFinancial(string $format, $from, $to, string $period)
+    {
+        Gate::authorize('reports.financial');
+        $service = app(\App\Services\Reports\FinancialReportService::class);
+        $summary = $service->summary($from, $to)['totals'];
+
+        return $this->exporter->export($format, 'Financial Report', $period, [
+            'date' => 'Date', 'number' => 'Number', 'type' => 'Type', 'customer' => 'Customer', 'payer' => 'Payer',
+            'subtotal' => 'Net', 'tax' => 'Tax', 'total' => 'Total (ETB)', 'status' => 'Status', 'rrn' => 'MoR RRN',
+        ], $service->rows($from, $to), [
+            'Invoices' => $summary['invoices'],
+            'Invoiced (ETB)' => number_format($summary['invoiced'], 2),
+            'Collected (ETB)' => number_format($summary['collected'], 2),
+            'Tax collected (ETB)' => number_format($summary['tax_collected'], 2),
+            'Insurance share (ETB)' => number_format($summary['payer_share'], 2),
+        ]);
     }
 
     private function exportSales(Request $request, string $format, $from, $to, string $period)
@@ -183,6 +225,6 @@ class ReportController extends Controller
     {
         $user = $request->user();
 
-        return $user->hasRole(User::ROLE_DOCTOR) ? $user->id : ($request->query('doctor_id') ? (int) $request->query('doctor_id') : null);
+        return $user->isPrescriber() ? $user->id : ($request->query('doctor_id') ? (int) $request->query('doctor_id') : null);
     }
 }

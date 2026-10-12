@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Organization;
 
+use App\Models\Tenant;
 use App\Rules\EthiopianPhone;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -17,7 +18,8 @@ class UpdateOrganizationRequest extends FormRequest
             'license_number' => ['sometimes', 'required', 'string', 'max:60'],
             'tin_number' => ['nullable', 'digits:10'],
             'phone' => ['sometimes', 'required', EthiopianPhone::orLandline()],
-            'email' => ['nullable', 'email'],
+            // The platform team edits /admin/tenants/{tenant}; an organization edits its own profile
+            'email' => ['nullable', 'email', 'max:191', Tenant::uniqueEmailRule($this->route('tenant')?->id ?? $this->user()->tenant_id)],
             'region' => ['sometimes', 'required', 'string', 'max:80'],
             'city' => ['sometimes', 'required', 'string', 'max:80'],
             'sub_city' => ['nullable', 'string', 'max:80'],
@@ -32,5 +34,17 @@ class UpdateOrganizationRequest extends FormRequest
             // Only the platform team can change verification status
             'status' => [$moderating ? 'sometimes' : 'prohibited', Rule::in(['pending', 'active', 'suspended', 'rejected'])],
         ];
+    }
+
+    public function messages(): array
+    {
+        return ['email.unique' => 'Another organization already uses this email. Use your own organization email.'];
+    }
+
+    protected function prepareForValidation(): void
+    {
+        if (is_string($this->input('email')) && $this->input('email') !== '') {
+            $this->merge(['email' => strtolower(trim($this->input('email')))]);
+        }
     }
 }

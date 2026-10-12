@@ -40,7 +40,10 @@ class AuthController extends Controller
         Auth::setUser($user);
         $this->logger->log('login', $user, [], "{$user->name} signed in");
 
-        return $this->tokenResponse($user, $request->input('device_name', 'web'));
+        // Name the token after the device so users can review and revoke sessions
+        $device = $request->input('device_name') ?: \Illuminate\Support\Str::limit((string) $request->userAgent(), 120, '') ?: 'web';
+
+        return $this->tokenResponse($user, $device);
     }
 
     public function register(RegisterCustomerRequest $request): JsonResponse
@@ -111,6 +114,21 @@ class AuthController extends Controller
 
         return (new UserResource($user))->resolve() + [
             'permissions' => $user->getAllPermissions()->pluck('name')->values(),
+            'modules' => $user->tenant?->enabledModules() ?? [],
+            'subscription' => $this->subscriptionSummary($user),
         ];
+    }
+
+    private function subscriptionSummary(User $user): ?array
+    {
+        $sub = $user->tenant?->billingSubscription();
+
+        return $sub ? [
+            'status' => $sub->status,
+            'plan' => $sub->plan?->name,
+            'ends_at' => $sub->endsAt()?->toIso8601String(),
+            'days_left' => $sub->daysLeft(),
+            'usable' => $sub->isUsable(),
+        ] : null;
     }
 }

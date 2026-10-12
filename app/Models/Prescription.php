@@ -17,7 +17,7 @@ class Prescription extends Model
 
     protected $fillable = [
         'tenant_id', 'doctor_id', 'patient_id', 'reference_code', 'diagnosis', 'notes',
-        'status', 'issued_at', 'expires_at',
+        'status', 'issued_at', 'expires_at', 'visit_id', 'pharmacy_id',
     ];
 
     protected function casts(): array
@@ -62,5 +62,16 @@ class Prescription extends Model
     public function scopeDispensable(Builder $query): Builder
     {
         return $query->whereIn('status', self::DISPENSABLE_STATUSES)->where('expires_at', '>', now());
+    }
+
+    public function visit(): BelongsTo
+    {
+        return $this->belongsTo(Visit::class)->withoutGlobalScopes();
+    }
+
+    /** The pharmacy the prescription was sent to (the hospital's own or an external partner). */
+    public function routedPharmacy(): BelongsTo
+    {
+        return $this->belongsTo(Tenant::class, 'pharmacy_id');
     }
 }

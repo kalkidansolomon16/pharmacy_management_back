@@ -27,6 +27,12 @@ class MedicineResource extends JsonResource
             'category_id' => $this->category_id,
             'category' => new MedicineCategoryResource($this->whenLoaded('category')),
             'listings_count' => $this->whenCounted('listings'),
+            // Catalogue contributions
+            'review_status' => $this->review_status ?? 'approved',
+            'review_note' => $this->when($this->review_status === 'rejected', $this->review_note),
+            'is_own' => $request->user()?->tenant_id !== null && $this->created_by_tenant_id === $request->user()?->tenant_id,
+            'contributed_by' => $this->when($request->user()?->isSuperAdmin() ?? false, fn () => $this->relationLoaded('contributor') ? $this->contributor?->name : null),
+            'can_edit' => $request->user()?->can('update', $this->resource) ?? false,
         ];
     }
 }

@@ -16,6 +16,11 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->scoped(TenantContext::class);
+
+        // Ministry of Revenue e-invoicing transport: local sandbox until accreditation credentials are configured
+        $this->app->bind(\App\Services\Fiscal\EInvoiceGateway::class, fn () => config('einvoice.driver') === 'mor'
+            ? new \App\Services\Fiscal\MorEInvoiceGateway
+            : new \App\Services\Fiscal\SandboxEInvoiceGateway);
     }
 
     public function boot(): void
@@ -23,8 +28,11 @@ class AppServiceProvider extends ServiceProvider
         Schema::defaultStringLength(191);
 
         // Report abilities (reports are not models, so they are gates rather than policies)
-        Gate::define('reports.sales', fn (User $u) => $u->can('reports.view') && ($u->isSuperAdmin() || $u->tenant?->isPharmacy()));
-        Gate::define('reports.inventory', fn (User $u) => $u->can('reports.view') && $u->tenant?->isPharmacy());
+        Gate::define('reports.sales', fn (User $u) => $u->can('reports.view') && ($u->isSuperAdmin() || $u->tenant?->isPharmacy() || $u->tenant?->hasModule('pharmacy')));
+        Gate::define('scan.use', fn (User $u) => $u->can('inventory.view') || $u->can('sales.create'));
+        Gate::define('reports.financial', fn (User $u) => $u->can('billing.view') && $u->can('reports.view') && $u->tenant?->hasModule('billing'));
+        Gate::define('reports.dhis2', fn (User $u) => $u->can('reports.view') && $u->tenant?->hasModule('clinical'));
+        Gate::define('reports.inventory', fn (User $u) => $u->can('reports.view') && ($u->tenant?->isPharmacy() || $u->tenant?->hasModule('pharmacy')));
         Gate::define('reports.prescriptions', fn (User $u) => ($u->can('reports.view') || $u->can('prescriptions.create')) && $u->tenant?->isHospital());
 
         RateLimiter::for('api', fn (Request $request) => Limit::perMinute(120)->by($request->user()?->id ?: $request->ip()));

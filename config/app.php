@@ -1,11 +1,12 @@
 <?php
+
 // use Laratrust\Facades\Laratrust;
 
 return [
-'aliases' => [
-    // ...
-    'Laratrust' => Laratrust\LaratrustFacade::class,
-],
+    'aliases' => [
+        // ...
+        'Laratrust' => Laratrust\LaratrustFacade::class,
+    ],
     /*
     |--------------------------------------------------------------------------
     | Application Name
@@ -57,6 +58,9 @@ return [
     */
 
     'url' => env('APP_URL', 'http://localhost'),
+
+    // The web app people sign in to (used for links in emails)
+    'frontend_url' => env('FRONTEND_URL', env('APP_URL', 'http://localhost')),
 
     /*
     |--------------------------------------------------------------------------

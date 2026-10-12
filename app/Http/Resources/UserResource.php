@@ -22,6 +22,9 @@ class UserResource extends JsonResource
             'tenant_id' => $this->tenant_id,
             'tenant' => new TenantResource($this->whenLoaded('tenant')),
             'role' => $this->whenLoaded('roles', fn () => $this->roles->first()?->name),
+            'role_label' => $this->whenLoaded('roles', fn () => $this->roles->first() ? ($this->roles->first() instanceof \App\Models\Role ? $this->roles->first()->displayName() : $this->roles->first()->name) : null),
+            // Permissions granted to this person individually, on top of their role
+            'extra_permissions' => $this->whenLoaded('permissions', fn () => $this->permissions->pluck('name')->values()),
             'last_login_at' => $this->last_login_at,
             'created_at' => $this->created_at,
         ];

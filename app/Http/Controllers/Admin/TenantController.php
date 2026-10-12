@@ -49,9 +49,13 @@ class TenantController extends Controller
     public function updateStatus(Request $request, Tenant $tenant, RegistrationService $registration)
     {
         $this->authorize('moderate', $tenant);
-        $data = $request->validate(['status' => ['required', Rule::in(['active', 'suspended', 'rejected', 'pending'])]]);
+        $data = $request->validate([
+            'status' => ['required', Rule::in(['active', 'suspended', 'rejected', 'pending'])],
+            // The organization is told why (in the app and by email)
+            'reason' => ['nullable', 'required_if:status,rejected', 'string', 'max:1000'],
+        ], ['reason.required_if' => 'Tell the applicant why it was rejected, so they know what to fix.']);
 
-        $registration->changeTenantStatus($tenant, $data['status']);
+        $registration->changeTenantStatus($tenant, $data['status'], $data['reason'] ?? null);
 
         return $this->respond(new TenantResource($tenant), match ($data['status']) {
             'active' => "{$tenant->name} has been approved.",

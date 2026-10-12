@@ -109,6 +109,7 @@ class CatalogSeeder extends Seeder
                     'unit' => $unit,
                     'prescription_required' => $rx,
                     'is_controlled' => $controlled,
+                    'tax_category' => $cat === 'vitamins' ? 'standard' : 'exempt', // supplements are VAT-able; medicines exempt
                     'storage_conditions' => $storage ?? 'Store in a cool, dry place below 30°C',
                     'is_active' => true,
                 ]

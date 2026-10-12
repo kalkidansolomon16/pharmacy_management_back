@@ -26,6 +26,10 @@ class WalkInSaleRequest extends FormRequest
             'payment_method' => ['required', Rule::in(Order::PAYMENT_METHODS)],
             'discount' => ['nullable', 'numeric', 'min:0'],
             'notes' => ['nullable', 'string', 'max:500'],
+            // Additions: dispensing store, insurance / credit coverage, offline idempotency key
+            'store_id' => ['nullable', 'integer'],
+            'membership_id' => ['nullable', 'integer'],
+            'client_uuid' => ['nullable', 'string', 'max:64'],
         ];
     }
 

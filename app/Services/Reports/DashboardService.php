@@ -87,7 +87,7 @@ class DashboardService
     private function hospital(User $user): array
     {
         [$from, $to] = ReportService::range(null, null, 14);
-        $doctorId = $user->hasRole(User::ROLE_DOCTOR) ? $user->id : null;
+        $doctorId = $user->isPrescriber() ? $user->id : null;
         $prescriptions = Prescription::query()->when($doctorId, fn ($q) => $q->where('doctor_id', $doctorId));
         $report = $this->reports->prescriptions(CarbonImmutable::now()->subDays(29)->startOfDay(), CarbonImmutable::now()->endOfDay(), $doctorId);
 
@@ -98,7 +98,7 @@ class DashboardService
                 'prescriptions_30d' => $report['totals']['prescriptions'],
                 'active_prescriptions' => (clone $prescriptions)->dispensable()->count(),
                 'dispense_rate' => $report['totals']['dispense_rate'],
-                'doctors' => User::where('tenant_id', $user->tenant_id)->role(User::ROLE_DOCTOR)->count(),
+                'doctors' => User::where('tenant_id', $user->tenant_id)->where('status', 'active')->permission('prescriptions.create')->count(),
             ],
             'daily_prescriptions' => $this->reports->dailySeries(clone $prescriptions, 'issued_at', $from, $to, 'count(*)'),
             'by_status' => $report['by_status'],
