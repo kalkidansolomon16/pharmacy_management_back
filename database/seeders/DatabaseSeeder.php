@@ -15,6 +15,7 @@ class DatabaseSeeder extends Seeder
             DemoSeeder::class,
             OperationsDemoSeeder::class,
             HealthFacilitiesSeeder::class,
+            HospitalSpecialtiesSeeder::class,
         ]);
     }
 }

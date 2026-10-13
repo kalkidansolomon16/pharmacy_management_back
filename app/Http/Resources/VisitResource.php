@@ -32,6 +32,9 @@ class VisitResource extends JsonResource
             'lab_orders' => LabOrderResource::collection($this->whenLoaded('labOrders')),
             'prescriptions' => PrescriptionResource::collection($this->whenLoaded('prescriptions')),
             'invoices' => InvoiceResource::collection($this->whenLoaded('invoices')),
+            // Card / consultation fee still owed before the doctor can see the patient (only when the hospital asks for it)
+            'fees_due' => $this->seen_at || ! in_array($this->status, \App\Models\Visit::OPEN_STATUSES, true)
+                ? null : app(\App\Services\Clinical\ClinicalService::class)->unpaidCheckInFees($this->resource),
             'checked_in_at' => $this->checked_in_at,
             'triaged_at' => $this->triaged_at,
             'seen_at' => $this->seen_at,

@@ -30,6 +30,8 @@ class WalkInSaleRequest extends FormRequest
             'store_id' => ['nullable', 'integer'],
             'membership_id' => ['nullable', 'integer'],
             'client_uuid' => ['nullable', 'string', 'max:64'],
+            // Sold while offline: the money was already taken at the counter
+            'recorded_offline' => ['nullable', 'boolean'],
         ];
     }
 

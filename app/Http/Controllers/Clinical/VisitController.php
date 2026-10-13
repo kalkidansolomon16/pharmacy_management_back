@@ -24,13 +24,16 @@ class VisitController extends Controller
     {
         $this->authorize('viewAny', Visit::class);
         $user = $request->user();
+        // Doctors only see their own patients and those not yet assigned to any doctor
+        $onlyMine = self::seesOnlyOwnPatients($user) || $request->boolean('mine');
+        $mine = fn ($q) => $q->where(fn ($w) => $w->where('doctor_id', $user->id)->orWhereNull('doctor_id'));
 
         $visits = Visit::query()
             ->with('patient', 'doctor:id,name', 'membership.payer')
             ->when($request->query('scope', 'today') === 'today', fn ($q) => $q->where(fn ($w) => $w
                 ->whereDate('checked_in_at', today())->orWhereIn('status', Visit::OPEN_STATUSES)))
             ->when($request->query('status'), fn ($q, $s) => $s === 'open' ? $q->whereIn('status', Visit::OPEN_STATUSES) : $q->where('status', $s))
-            ->when($request->boolean('mine'), fn ($q) => $q->where(fn ($w) => $w->where('doctor_id', $user->id)->orWhereNull('doctor_id')))
+            ->when($onlyMine, $mine)
             ->when($request->query('search'), fn ($q, $term) => $q->where(fn ($w) => $w->where('visit_number', 'like', "%{$term}%")
                 ->orWhereHas('patient', fn ($p) => $p->where('full_name', 'like', "%{$term}%")->orWhere('mrn', 'like', "%{$term}%"))))
             ->orderByRaw("case when status in ('completed','cancelled') then 1 else 0 end")
@@ -38,9 +41,9 @@ class VisitController extends Controller
             ->orderBy('checked_in_at')
             ->paginate($this->perPage(30));
 
-        $counts = Visit::whereDate('checked_in_at', today())->selectRaw('status, count(*) as n')->groupBy('status')->pluck('n', 'status');
+        $counts = Visit::whereDate('checked_in_at', today())->when($onlyMine, $mine)->selectRaw('status, count(*) as n')->groupBy('status')->pluck('n', 'status');
 
-        return VisitResource::collection($visits)->additional(['meta' => ['counts' => $counts]]);
+        return VisitResource::collection($visits)->additional(['meta' => ['counts' => $counts, 'only_mine' => self::seesOnlyOwnPatients($user)]]);
     }
 
     public function store(CheckInRequest $request)
@@ -67,9 +70,19 @@ class VisitController extends Controller
         return $this->respond(new VisitResource($this->clinical->triage($visit, $request->validated())->load('patient')), 'Vital signs recorded.');
     }
 
+    /** Doctors work from their own list; reception, nurses and the hospital admin see everyone. */
+    public static function seesOnlyOwnPatients(User $user): bool
+    {
+        return $user->hasRole(User::ROLE_DOCTOR) && ! $user->hasAnyRole([User::ROLE_HOSPITAL_ADMIN, User::ROLE_OWNER]);
+    }
+
     public function start(Request $request, Visit $visit)
     {
         $this->authorize('consult', $visit);
+        $user = $request->user();
+        if (self::seesOnlyOwnPatients($user) && $visit->doctor_id && $visit->doctor_id !== $user->id) {
+            abort(403, 'This patient is assigned to '.($visit->doctor?->name ?? 'another doctor').'. Ask reception to reassign the patient to you.');
+        }
 
         return $this->respond(new VisitResource($this->clinical->start($visit, $request->user())->load('patient')), 'Consultation started.');
     }

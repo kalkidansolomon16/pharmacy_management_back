@@ -44,10 +44,20 @@ class OrganizationSettingsController extends Controller
             'settings' => ['sometimes', 'array'],
             'settings.payment_before_service' => ['boolean'],
             'settings.registration_fee_on_check_in' => ['boolean'],
+            'settings.card_fee_before_consultation' => ['boolean'],
+            'settings.pay_at_cashier' => ['boolean'],
             'settings.einvoice_enabled' => ['boolean'],
             'settings.four_eyes_lab_verification' => ['boolean'],
             'settings.dhis2_org_unit' => ['nullable', 'string', 'max:40'],
             'settings.dhis2_dataset' => ['nullable', 'string', 'max:40'],
+            // Online appointments
+            'settings.appointments_enabled' => ['boolean'],
+            'settings.appointment_open' => ['date_format:H:i'],
+            'settings.appointment_close' => ['date_format:H:i'],
+            'settings.appointment_days' => ['array', 'min:1'],
+            'settings.appointment_days.*' => ['integer', 'between:1,7'],
+            'settings.appointment_slot_minutes' => ['integer', Rule::in([15, 20, 30, 45, 60])],
+            'settings.appointments_per_slot' => ['integer', 'between:1,50'],
         ]);
 
         $planModules = app(\App\Services\Platform\PlanLimits::class)->modules($tenant);
@@ -61,6 +71,12 @@ class OrganizationSettingsController extends Controller
         }
         if (isset($data['settings'])) {
             $data['settings'] = array_merge($tenant->settings ?? [], $data['settings']);
+            // Appointment hours are checked against the saved ones, since either may change alone
+            $open = $data['settings']['appointment_open'] ?? Tenant::DEFAULT_SETTINGS['appointment_open'];
+            $close = $data['settings']['appointment_close'] ?? Tenant::DEFAULT_SETTINGS['appointment_close'];
+            if ($close <= $open) {
+                throw \App\Exceptions\BusinessRuleException::withErrors('settings.appointment_close', 'Appointments must end after the first appointment time.');
+            }
         }
         $tenant->update($data);
 

@@ -22,6 +22,10 @@ class PublicFacilityResource extends PublicPharmacyResource
                 $this->type === 'hospital' && in_array('pharmacy', $modules, true) ? 'pharmacy' : null,
                 in_array('insurance', $modules, true) ? 'insurance' : null,
             ])),
+            // Specialties a hospital offers (Orthopedics & Spine, Cardiology...), active ones only
+            'specialties' => $this->whenLoaded('specialties', fn () => $this->specialties->where('is_active', true)->map(fn ($s) => [
+                'id' => $s->id, 'name' => $s->name, 'name_am' => $s->name_am, 'slug' => $s->slug, 'icon' => $s->icon,
+            ])->values()),
         ];
     }
 }

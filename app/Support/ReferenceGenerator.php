@@ -29,6 +29,15 @@ class ReferenceGenerator
         return $number;
     }
 
+    public static function appointmentReference(): string
+    {
+        do {
+            $code = 'APT-'.self::random(6);
+        } while (\App\Models\Appointment::withoutGlobalScopes()->where('reference', $code)->exists());
+
+        return $code;
+    }
+
     private static function random(int $length): string
     {
         return collect(range(1, $length))

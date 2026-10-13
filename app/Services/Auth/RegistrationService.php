@@ -38,6 +38,8 @@ class RegistrationService
     {
         $user = DB::transaction(function () use ($data) {
             $org = $data['organization'];
+            $specialtyIds = $org['specialty_ids'] ?? [];
+            unset($org['specialty_ids']);
             $tenant = Tenant::create([
                 ...$org,
                 'phone' => ReferenceGenerator::normalizePhone($org['phone']),
@@ -55,13 +57,69 @@ class RegistrationService
             $user->assignRole($tenant->isPharmacy() ? User::ROLE_PHARMACY_ADMIN : User::ROLE_HOSPITAL_ADMIN);
             app(\App\Services\Platform\SubscriptionService::class)->startTrial($tenant);
             \App\Models\Store::defaultFor($tenant->id);
+            // Hospitals & clinics choose their specialties while registering, so patients can find them from day one
+            if (! $tenant->isPharmacy() && $specialtyIds) {
+                $tenant->specialties()->sync(\App\Models\HospitalSpecialty::active()->whereIn('id', $specialtyIds)->pluck('id'));
+            }
+            // The hospital's own pharmacy, registered together with it
+            if ($tenant->isHospital() && ! empty($data['has_pharmacy']) && ! empty($data['pharmacy'])) {
+                $this->registerInHousePharmacy($tenant, $data['pharmacy'], $user);
+            }
 
             return $user;
         });
 
         User::role(User::ROLE_SUPER_ADMIN)->get()->each->notify(new NewTenantRegistered($user->tenant));
+        $user->tenant->inHousePharmacies()->get()->each(
+            fn (Tenant $pharmacy) => User::role(User::ROLE_SUPER_ADMIN)->get()->each->notify(new NewTenantRegistered($pharmacy))
+        );
 
         return $user;
+    }
+
+    /**
+     * A hospital's in-house pharmacy: its own pharmacy account (own EFDA licence, own pharmacist in charge, own stock),
+     * at the hospital's address, linked to the hospital. It is verified by the platform team like any pharmacy.
+     */
+    private function registerInHousePharmacy(Tenant $hospital, array $data, User $hospitalAdmin): Tenant
+    {
+        $phone = ReferenceGenerator::normalizePhone($data['admin']['phone']);
+        if ($phone === $hospitalAdmin->phone) {
+            throw \App\Exceptions\BusinessRuleException::withErrors('pharmacy.admin.phone', 'The pharmacist in charge needs their own mobile number, different from the hospital administrator.');
+        }
+
+        $pharmacy = Tenant::create([
+            'name' => $data['name'],
+            'type' => Tenant::TYPE_PHARMACY,
+            'status' => 'pending',
+            'hospital_id' => $hospital->id,
+            'license_number' => $data['license_number'],
+            'phone' => ! empty($data['phone']) ? ReferenceGenerator::normalizePhone($data['phone']) : $hospital->phone,
+            'email' => $data['email'] ?? null,
+            // Same place as the hospital
+            'region' => $hospital->region, 'city' => $hospital->city, 'sub_city' => $hospital->sub_city, 'woreda' => $hospital->woreda,
+            'address_line' => $hospital->address_line ?: "Inside {$hospital->name}",
+            'latitude' => $hospital->latitude, 'longitude' => $hospital->longitude,
+            'opening_hours' => $data['opening_hours'] ?? $hospital->opening_hours,
+            'is_24_hours' => (bool) ($data['is_24_hours'] ?? $hospital->is_24_hours),
+            'delivery_available' => (bool) ($data['delivery_available'] ?? false),
+            'description' => "In-house pharmacy of {$hospital->name}.",
+        ]);
+
+        $pharmacist = User::create([
+            'tenant_id' => $pharmacy->id,
+            'name' => $data['admin']['name'],
+            'email' => $data['admin']['email'],
+            'phone' => $phone,
+            'city' => $pharmacy->city,
+            'password' => $data['admin']['password'],
+        ]);
+        $pharmacist->assignRole(User::ROLE_PHARMACY_ADMIN);
+        app(\App\Services\Platform\SubscriptionService::class)->startTrial($pharmacy);
+        \App\Models\Store::defaultFor($pharmacy->id);
+        $this->logger->log('in_house_pharmacy_registered', $pharmacy, ['hospital_id' => $hospital->id], "{$hospital->name} registered its pharmacy {$pharmacy->name}");
+
+        return $pharmacy;
     }
 
     public function changeTenantStatus(Tenant $tenant, string $status, ?string $reason = null): Tenant
