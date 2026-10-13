@@ -56,6 +56,8 @@ class AuthController extends Controller
     public function registerOrganization(RegisterOrganizationRequest $request): JsonResponse
     {
         $user = $this->registration->registerOrganization($request->validated());
+        // The new admin is signed in from here on, so the reply includes their own licence details
+        app('request')->setUserResolver(fn () => $user);
 
         return $this->tokenResponse(
             $user, 'web', 201,

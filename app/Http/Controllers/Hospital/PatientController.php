@@ -17,8 +17,18 @@ class PatientController extends Controller
     {
         $this->authorize('viewAny', Patient::class);
 
+        $user = $request->user();
         $patients = Patient::query()
             ->withCount('prescriptions')
+            // Doctors see their own patients and those no doctor has taken yet (like the queue);
+            // reception, nurses and the hospital admin see the whole register
+            ->when(\App\Http\Controllers\Clinical\VisitController::seesOnlyOwnPatients($user), fn ($q) => $q->where(fn ($w) => $w
+                ->whereHas('visits', fn ($v) => $v->where('doctor_id', $user->id))
+                ->orWhereHas('prescriptions', fn ($p) => $p->where('doctor_id', $user->id))
+                // waiting today for any doctor
+                ->orWhereHas('visits', fn ($v) => $v->whereNull('doctor_id')->whereIn('status', \App\Models\Visit::OPEN_STATUSES))
+                // never seen by any doctor yet (e.g. just registered)
+                ->orWhere(fn ($n) => $n->whereDoesntHave('visits', fn ($v) => $v->whereNotNull('doctor_id'))->whereDoesntHave('prescriptions'))))
             ->when($request->query('search'), fn ($q, $term) => $q->where(fn ($w) => $w
                 ->where('full_name', 'like', "%{$term}%")
                 ->orWhere('mrn', 'like', "%{$term}%")

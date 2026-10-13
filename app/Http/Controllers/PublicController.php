@@ -48,6 +48,16 @@ class PublicController extends Controller
         return SearchResultResource::collection($this->search->search($filters, $this->perPage(12)));
     }
 
+    /** GET /public/specialties - hospital specialties patients can filter by, with how many active hospitals offer each. */
+    public function specialties()
+    {
+        return \App\Http\Resources\HospitalSpecialtyResource::collection(
+            \App\Models\HospitalSpecialty::active()->ordered()
+                ->withCount(['hospitals' => fn ($q) => $q->where('status', 'active')])
+                ->get()
+        );
+    }
+
     public function categories()
     {
         return MedicineCategoryResource::collection(
@@ -124,6 +134,7 @@ class PublicController extends Controller
             'open_24' => ['nullable', 'boolean'],
             'delivery' => ['nullable', 'boolean'], // pharmacies that deliver (hospitals drop out)
             'limit' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'specialty' => ['nullable', 'string', 'max:110'], // hospitals offering this specialty (slug)
         ]);
 
         $lat = (float) $filters['lat'];
@@ -135,6 +146,9 @@ class PublicController extends Controller
             ->when($type !== 'all', fn ($q) => $q->where('type', $type), fn ($q) => $q->whereIn('type', [Tenant::TYPE_PHARMACY, Tenant::TYPE_HOSPITAL]))
             ->when($request->boolean('open_24'), fn ($q) => $q->where('is_24_hours', true))
             ->when($request->boolean('delivery'), fn ($q) => $q->where('type', Tenant::TYPE_PHARMACY)->where('delivery_available', true))
+            ->when($filters['specialty'] ?? null, fn ($q, $slug) => $q->where('type', Tenant::TYPE_HOSPITAL)
+                ->whereHas('specialties', fn ($s) => $s->where('slug', $slug)->where('is_active', true)))
+            ->with('specialties')
             ->withCount(['pharmacyMedicines' => fn ($q) => $q->where('is_public', true)])
             ->get()
             ->each(fn (Tenant $t) => $t->setAttribute('distance_km', round(Geo::distanceKm($lat, $lng, (float) $t->latitude, (float) $t->longitude), 2)))
@@ -207,6 +221,9 @@ class PublicController extends Controller
     {
         return $this->respond(config('ethiopia') + [
             'cities_with_pharmacies' => Tenant::pharmacies()->active()->distinct()->orderBy('city')->pluck('city')->filter()->values(),
+            // How many approved pharmacies each city has, for the city pickers
+            'pharmacies_per_city' => Tenant::pharmacies()->active()->whereNotNull('city')
+                ->selectRaw('city, count(*) as total')->groupBy('city')->pluck('total', 'city'),
         ]);
     }
 

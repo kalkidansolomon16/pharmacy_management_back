@@ -27,7 +27,8 @@ class NewTenantRegistered extends AppNotification
             'title' => $this->resubmitted ? ucfirst($this->tenant->type).' resubmitted for approval' : 'New '.$this->tenant->type.' awaiting approval',
             'message' => $this->resubmitted
                 ? "{$this->tenant->name} corrected its details (licence {$this->tenant->license_number}) after being rejected.".($this->note ? " Note: {$this->note}" : '')
-                : "{$this->tenant->name} ({$this->tenant->city}) registered with licence {$this->tenant->license_number}.",
+                : "{$this->tenant->name} ({$this->tenant->city}) registered with licence {$this->tenant->license_number}."
+                    .($this->tenant->hospital_id && ($hospital = Tenant::find($this->tenant->hospital_id)) ? " It is the in-house pharmacy of {$hospital->name}." : ''),
             'link' => '/app/admin/tenants?status=pending',
             'meta' => ['tenant_id' => $this->tenant->id],
         ];

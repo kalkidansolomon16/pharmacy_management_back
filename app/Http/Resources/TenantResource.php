@@ -39,6 +39,11 @@ class TenantResource extends JsonResource
             'users_count' => $this->whenCounted('users'),
             'medicines_count' => $this->whenCounted('pharmacyMedicines'),
             'parent_id' => $this->parent_id,
+            // In-house pharmacy <-> its hospital
+            'hospital_id' => $this->hospital_id,
+            'hospital' => $this->when((bool) $this->hospital_id, fn () => ($h = $this->hospital) ? ['id' => $h->id, 'name' => $h->name, 'status' => $h->status] : null),
+            'in_house_pharmacies' => $this->when($this->type === 'hospital', fn () => $this->inHousePharmacies()->get(['id', 'name', 'status', 'license_number'])
+                ->map(fn ($p) => ['id' => $p->id, 'name' => $p->name, 'status' => $p->status] + ($private ? ['license_number' => $p->license_number] : []))),
             'modules' => $this->enabledModules(),
             'tax_regime' => $this->when($private, $this->tax_regime),
             'vat_number' => $this->when($private, $this->vat_number),

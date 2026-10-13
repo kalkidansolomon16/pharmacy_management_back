@@ -14,7 +14,7 @@ class CheckSubscriptions extends Command
     public function handle(SubscriptionService $subscriptions): int
     {
         $result = $subscriptions->check();
-        $this->info("Past due: {$result['past_due']}, reminders sent: {$result['reminded']}.");
+        $this->info("Past due: {$result['past_due']}, reminders sent: {$result['reminded']}, plan changes applied: {$result['plan_changes']}.");
 
         return self::SUCCESS;
     }

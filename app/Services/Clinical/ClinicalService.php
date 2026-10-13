@@ -119,9 +119,47 @@ class ClinicalService
         return $visit;
     }
 
+    /**
+     * Card / consultation fees from check-in that the patient still owes (insurance shares do not count).
+     * Null when nothing is owed, or the hospital does not ask for the card fee before consultation.
+     */
+    public function unpaidCheckInFees(Visit $visit): ?array
+    {
+        $tenant = $visit->tenant ?? \App\Models\Tenant::find($visit->tenant_id);
+        if (! $tenant?->setting('card_fee_before_consultation') || $visit->type === 'emergency') {
+            return null; // emergencies are never held up at the cashier
+        }
+
+        $invoices = \App\Models\Invoice::withoutGlobalScopes()->where('visit_id', $visit->id)->where('status', '!=', 'void')
+            ->whereHas('items', fn ($q) => $q->whereIn('item_type', ['registration', 'consultation']))->get()
+            ->reject(fn ($invoice) => $invoice->isPatientSettled());
+        if ($invoices->isEmpty()) {
+            return null;
+        }
+
+        return [
+            'amount' => round($invoices->sum(fn ($invoice) => $invoice->patientBalance()), 2),
+            'invoices' => $invoices->pluck('invoice_number')->values()->all(),
+        ];
+    }
+
+    /** Stops the consultation when the card fee must be paid first. */
+    private function assertFeesPaid(Visit $visit): void
+    {
+        if ($visit->seen_at || ! ($due = $this->unpaidCheckInFees($visit))) {
+            return; // already being seen, or nothing owed
+        }
+
+        throw BusinessRuleException::withErrors('payment', sprintf(
+            '%s has not paid the card / consultation fee yet: ETB %s pending at the cashier (%s). Send the patient to the cashier first.',
+            $visit->patient?->full_name ?? 'The patient', number_format($due['amount'], 2), implode(', ', $due['invoices'])
+        ));
+    }
+
     public function start(Visit $visit, User $doctor): Visit
     {
         $this->assertOpen($visit);
+        $this->assertFeesPaid($visit);
         $visit->update([
             'status' => 'in_consultation',
             'doctor_id' => $doctor->id,
@@ -134,6 +172,7 @@ class ClinicalService
     public function saveNotes(Visit $visit, array $data): Visit
     {
         $this->assertOpen($visit);
+        $this->assertFeesPaid($visit);
         $visit->update(array_intersect_key($data, array_flip(['chief_complaint', 'history', 'examination', 'diagnoses', 'plan'])));
 
         return $visit;

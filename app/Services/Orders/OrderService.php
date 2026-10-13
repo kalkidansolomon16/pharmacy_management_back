@@ -102,6 +102,29 @@ class OrderService
 
         $lines = $this->buildLines($pharmacy, $data['items'], $prescription, online: false);
 
+        // Pay at the cashier: the pharmacist only prepares the sale; the cashier takes the money, then the medicine is handed over.
+        // Sales recorded while offline were already paid at the counter, so they complete as before.
+        if ($pharmacy->setting('pay_at_cashier') && empty($data['recorded_offline'])) {
+            $order = DB::transaction(fn () => $this->createOrder($pharmacy, $lines, [
+                'created_by' => $staff->id,
+                'prescription_id' => $prescription?->id,
+                'channel' => 'walk_in',
+                'status' => 'confirmed',
+                'payment_status' => 'unpaid',
+                'customer_name' => $data['customer_name'] ?? ($prescription?->patient->full_name ?? 'Walk-in customer'),
+                'customer_phone' => ReferenceGenerator::normalizePhone($data['customer_phone'] ?? null),
+                'payment_method' => $data['payment_method'] ?? 'cash',
+                'discount' => $data['discount'] ?? 0,
+                'notes' => $data['notes'] ?? null,
+                'store_id' => $storeId,
+                'membership_id' => $membership?->id,
+                'client_uuid' => $data['client_uuid'] ?? null,
+            ]));
+            $this->logger->log('sale_sent_to_cashier', $order, ['total' => $order->total_amount], "Sale {$order->order_number} sent to the cashier");
+
+            return $order->fresh(['items.medicine', 'creator']);
+        }
+
         $order = DB::transaction(function () use ($staff, $pharmacy, $prescription, $lines, $data, $storeId, $membership) {
             $order = $this->createOrder($pharmacy, $lines, [
                 'created_by' => $staff->id,
@@ -128,6 +151,38 @@ class OrderService
         $this->checkStockLevels($order);
 
         return $order->fresh(['items.medicine', 'items.allocations.batch', 'creator']);
+    }
+
+    /** A counter sale waiting for the cashier (pay-at-cashier pharmacies). */
+    public static function awaitsCashier(Order $order): bool
+    {
+        return $order->channel === 'walk_in' && $order->payment_status === 'unpaid' && $order->isOpen();
+    }
+
+    /**
+     * Cashier takes the money for a counter sale: stock is deducted (FEFO), the prescription updated,
+     * and the fiscal receipt issued with this payment. The pharmacist then hands the medicine over.
+     */
+    public function collectAtCashier(Order $order, string $method, ?string $reference = null): Order
+    {
+        DB::transaction(function () use ($order, $method, $reference) {
+            $locked = Order::withoutGlobalScopes()->whereKey($order->id)->lockForUpdate()->firstOrFail();
+            if (! self::awaitsCashier($locked)) {
+                throw BusinessRuleException::withErrors('status', "Sale {$locked->order_number} is not waiting for payment (it is {$locked->status}).");
+            }
+
+            $locked->update(['payment_method' => $method]);
+            $this->dispense($locked, allowPartial: false); // walk-in sales become paid here
+            $invoice = $this->billing->invoiceForOrder($locked->refresh());
+            if ($reference) {
+                $invoice->payments()->latest('id')->first()?->update(['reference' => $reference]);
+            }
+            $this->logger->log('sale_paid_at_cashier', $locked, ['total' => $locked->total_amount, 'method' => $method], "Sale {$locked->order_number} paid at the cashier");
+        });
+
+        $this->checkStockLevels($order);
+
+        return $order->fresh(['items.medicine', 'creator', 'invoice']);
     }
 
     public function confirm(Order $order): Order
@@ -171,6 +226,9 @@ class OrderService
             $locked = Order::withoutGlobalScopes()->whereKey($order->id)->lockForUpdate()->firstOrFail();
             if (! $locked->canTransitionTo('completed')) {
                 throw BusinessRuleException::withErrors('status', "An order that is {$locked->status} cannot be completed.");
+            }
+            if (self::awaitsCashier($locked)) {
+                throw BusinessRuleException::withErrors('payment', "Sale {$locked->order_number} is waiting for payment at the cashier.");
             }
 
             $this->dispense($locked, $allowPartial);

@@ -46,8 +46,24 @@ class DashboardService
                 'orders_30d' => (clone $fulfilled)->where('fulfilled_at', '>=', now()->subDays(30))->count(),
                 'gmv_30d' => round((float) (clone $fulfilled)->where('fulfilled_at', '>=', now()->subDays(30))->sum('total_amount'), 2),
                 'prescriptions_30d' => Prescription::where('issued_at', '>=', now()->subDays(30))->count(),
+                'patients' => \App\Models\Patient::acrossTenants()->count(),
+                'patients_30d' => \App\Models\Patient::acrossTenants()->where('created_at', '>=', now()->subDays(30))->count(),
             ],
+            // Where patients are registered (top hospitals / clinics)
+            'patients_by_hospital' => Tenant::where('type', 'hospital')
+                ->withCount(['patients' => fn ($q) => $q->withoutGlobalScopes()])
+                ->get(['id', 'name', 'city'])
+                ->filter(fn ($t) => $t->patients_count > 0)->sortByDesc('patients_count')->take(6)
+                ->map(fn ($t) => ['id' => $t->id, 'name' => $t->name, 'city' => $t->city, 'patients' => $t->patients_count])->values(),
             'daily_gmv' => $this->reports->dailySeries(clone $fulfilled, 'fulfilled_at', $from, $to, 'sum(total_amount)'),
+            // Organizations waiting for an answer on an upgrade / downgrade
+            'plan_change_requests' => \App\Models\PlanChangeRequest::with('tenant:id,name,type,city', 'fromPlan:id,name', 'toPlan:id,name,price_monthly')
+                ->where('status', 'pending')->oldest()->limit(5)->get()
+                ->map(fn ($r) => [
+                    'id' => $r->id, 'direction' => $r->direction, 'created_at' => $r->created_at,
+                    'tenant' => $r->tenant?->name, 'from_plan' => $r->fromPlan?->name, 'to_plan' => $r->toPlan?->name,
+                ]),
+            'plan_change_pending' => \App\Models\PlanChangeRequest::where('status', 'pending')->count(),
             'pending_tenants' => TenantResource::collection(Tenant::where('status', 'pending')->latest()->limit(6)->get())->resolve(),
             'pharmacies_by_city' => Tenant::pharmacies()->active()->selectRaw('city, count(*) as total')->groupBy('city')->orderByDesc('total')->limit(8)->get(),
         ];

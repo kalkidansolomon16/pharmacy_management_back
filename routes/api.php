@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\Admin\CategoryController;
+use App\Http\Controllers\Admin\HospitalSpecialtyController;
+use App\Http\Controllers\Admin\PatientController as AdminPatientController;
 use App\Http\Controllers\Admin\MedicineController;
 use App\Http\Controllers\Admin\TenantController;
 use App\Http\Controllers\AuthController;
@@ -12,10 +14,12 @@ use App\Http\Controllers\Billing\MembershipController;
 use App\Http\Controllers\Billing\PayerController;
 use App\Http\Controllers\Billing\ReceivablesController;
 use App\Http\Controllers\Billing\ServiceController;
+use App\Http\Controllers\Clinical\AppointmentController;
 use App\Http\Controllers\Clinical\LabOrderController;
 use App\Http\Controllers\Clinical\LabTestController;
 use App\Http\Controllers\Clinical\MedicineAvailabilityController;
 use App\Http\Controllers\Clinical\VisitController;
+use App\Http\Controllers\Customer\AppointmentController as CustomerAppointmentController;
 use App\Http\Controllers\Customer\OrderController as CustomerOrderController;
 use App\Http\Controllers\Hospital\PatientController;
 use App\Http\Controllers\Hospital\PrescriptionController;
@@ -39,11 +43,14 @@ use App\Http\Controllers\Platform\BranchController;
 use App\Http\Controllers\Platform\HelpController;
 use App\Http\Controllers\Platform\IntegrationController;
 use App\Http\Controllers\Platform\OrganizationSettingsController;
+use App\Http\Controllers\Platform\OrganizationSpecialtyController;
 use App\Http\Controllers\Platform\OwnerController;
 use App\Http\Controllers\Platform\PlanController;
 use App\Http\Controllers\Platform\SessionController;
 use App\Http\Controllers\Platform\SubscriptionAdminController;
+use App\Http\Controllers\Platform\PlanChangeController;
 use App\Http\Controllers\Platform\SubscriptionController;
+use App\Http\Controllers\PublicAppointmentController;
 use App\Http\Controllers\PublicController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\RoleController;
@@ -60,6 +67,7 @@ Route::prefix('public')->middleware([PublicContext::class, 'throttle:public'])->
     Route::get('meta', [PublicController::class, 'meta']);
     Route::get('stats', [PublicController::class, 'stats']);
     Route::get('categories', [PublicController::class, 'categories']);
+    Route::get('specialties', [PublicController::class, 'specialties']); // hospital specialties
     Route::get('medicines', [PublicController::class, 'searchMedicines']);
     Route::get('pharmacies', [PublicController::class, 'pharmacies']);
     Route::get('pharmacies/nearby', [PublicController::class, 'nearbyPharmacies']); // before {slug}
@@ -68,6 +76,9 @@ Route::prefix('public')->middleware([PublicContext::class, 'throttle:public'])->
     Route::get('pharmacies/{slug}/medicines', [PublicController::class, 'pharmacyMedicines']);
     Route::post('prescriptions/verify', [PublicController::class, 'verifyPrescription'])->middleware('throttle:prescription-verify');
     Route::get('plans', [PlanController::class, 'index']); // pricing page
+    // Hospital appointments: how crowded nearby hospitals are at a chosen time, and each one's free slots
+    Route::get('hospitals/availability', [PublicAppointmentController::class, 'nearby']);
+    Route::get('hospitals/{id}/slots', [PublicAppointmentController::class, 'slots'])->whereNumber('id');
 });
 
 Route::prefix('auth')->middleware('throttle:login')->group(function () {
@@ -114,6 +125,10 @@ Route::middleware(['auth:sanctum', 'full.token'])->group(function () {
 
     Route::get('help', HelpController::class);
     Route::get('subscription', [SubscriptionController::class, 'show']);
+    // Ask to upgrade / downgrade (works even when the plan has lapsed)
+    Route::get('subscription/change-preview', [PlanChangeController::class, 'preview']);
+    Route::post('subscription/change-requests', [PlanChangeController::class, 'store']);
+    Route::post('subscription/change-requests/{id}/cancel', [PlanChangeController::class, 'cancel'])->whereNumber('id');
 
     Route::middleware(['active', 'subscription'])->group(function () {
         Route::get('dashboard', [ReportController::class, 'dashboard']);
@@ -135,6 +150,8 @@ Route::middleware(['auth:sanctum', 'full.token'])->group(function () {
         Route::put('organization/settings', [OrganizationSettingsController::class, 'update']);
         Route::get('organization/branches', [BranchController::class, 'index']);
         Route::post('organization/branches', [BranchController::class, 'store']);
+        Route::get('organization/specialties', [OrganizationSpecialtyController::class, 'show']);
+        Route::put('organization/specialties', [OrganizationSpecialtyController::class, 'update']);
         Route::get('activity-logs', [ActivityLogController::class, 'index']);
         Route::get('owner/dashboard', OwnerController::class);
 
@@ -166,6 +183,14 @@ Route::middleware(['auth:sanctum', 'full.token'])->group(function () {
             Route::post('subscriptions', [SubscriptionAdminController::class, 'store']);
             Route::put('subscriptions/{subscription}', [SubscriptionAdminController::class, 'update']);
             Route::post('subscriptions/{subscription}/payments', [SubscriptionAdminController::class, 'pay']);
+            Route::get('plan-change-requests', [PlanChangeController::class, 'index']);
+            Route::post('plan-change-requests/{planChangeRequest}/approve', [PlanChangeController::class, 'approve']);
+            Route::post('plan-change-requests/{planChangeRequest}/reject', [PlanChangeController::class, 'reject']);
+            Route::get('patients', [AdminPatientController::class, 'index']); // every patient and their hospital
+            Route::get('specialties', [HospitalSpecialtyController::class, 'index']);
+            Route::post('specialties', [HospitalSpecialtyController::class, 'store']);
+            Route::put('specialties/{specialty}', [HospitalSpecialtyController::class, 'update']);
+            Route::delete('specialties/{specialty}', [HospitalSpecialtyController::class, 'destroy']);
             Route::get('backups', [BackupController::class, 'index']);
             Route::post('backups', [BackupController::class, 'store']);
             Route::get('backups/{file}', [BackupController::class, 'download'])->where('file', '[A-Za-z0-9_.\-]+');
@@ -177,6 +202,9 @@ Route::middleware(['auth:sanctum', 'full.token'])->group(function () {
             Route::post('orders', [CustomerOrderController::class, 'store']);
             Route::get('orders/{order}', [CustomerOrderController::class, 'show']);
             Route::post('orders/{order}/cancel', [CustomerOrderController::class, 'cancel']);
+            Route::get('appointments', [CustomerAppointmentController::class, 'index']);
+            Route::post('appointments', [CustomerAppointmentController::class, 'store']);
+            Route::post('appointments/{id}/cancel', [CustomerAppointmentController::class, 'cancel'])->whereNumber('id');
         });
 
         // Pharmacy workspace (pharmacies, and hospitals with an in-house pharmacy)
@@ -200,6 +228,10 @@ Route::middleware(['auth:sanctum', 'full.token'])->group(function () {
             Route::get('pos/products', [PosController::class, 'products']);
             Route::post('pos/sales', [PosController::class, 'sell']);
             Route::get('pos/prescriptions/{code}', [PosController::class, 'prescription']);
+            // Pay at the cashier: counter sales waiting for payment
+            Route::get('pos/counter-sales', [PosController::class, 'counterSales']);
+            Route::post('pos/counter-sales/{order}/pay', [PosController::class, 'payCounterSale']);
+            Route::post('pos/counter-sales/{order}/cancel', [PosController::class, 'cancelCounterSale']);
 
             // Supply chain additions
             Route::get('scan', ScanController::class);
@@ -250,6 +282,12 @@ Route::middleware(['auth:sanctum', 'full.token'])->group(function () {
             Route::post('visits/{visit}/assign', [VisitController::class, 'assign']);
             Route::post('visits/{visit}/complete', [VisitController::class, 'complete']);
             Route::post('visits/{visit}/cancel', [VisitController::class, 'cancel']);
+
+            // Online appointments booked by patients
+            Route::get('appointments', [AppointmentController::class, 'index']);
+            Route::post('appointments/{appointment}/check-in', [AppointmentController::class, 'checkIn']);
+            Route::post('appointments/{appointment}/no-show', [AppointmentController::class, 'noShow']);
+            Route::post('appointments/{appointment}/cancel', [AppointmentController::class, 'cancel']);
         });
 
         // Laboratory

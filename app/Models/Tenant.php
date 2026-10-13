@@ -22,7 +22,7 @@ class Tenant extends Model
         'region', 'city', 'sub_city', 'woreda', 'address_line', 'latitude', 'longitude',
         'opening_hours', 'is_24_hours', 'delivery_available', 'description', 'approved_at',
         'parent_id', 'modules', 'tax_regime', 'vat_number', 'settings',
-        'status_reason', 'status_changed_at',
+        'status_reason', 'status_changed_at', 'hospital_id',
     ];
 
     public const MODULES = ['pharmacy', 'clinical', 'lab', 'billing', 'insurance'];
@@ -37,8 +37,17 @@ class Tenant extends Model
     public const DEFAULT_SETTINGS = [
         'payment_before_service' => false,  // lab & pharmacy wait for the bill to be settled (or insured)
         'registration_fee_on_check_in' => true,
+        'pay_at_cashier' => false, // pharmacy counter: the pharmacist prepares the sale, the cashier takes the money
+        'card_fee_before_consultation' => false, // the doctor sees a patient only after the card / consultation fee is paid (never blocks emergencies)
         'einvoice_enabled' => true,          // register invoices with the Ministry of Revenue
         'four_eyes_lab_verification' => false, // lab results verified by a second person
+        // Online appointments (hospitals & clinics)
+        'appointments_enabled' => true,
+        'appointment_open' => '08:30',
+        'appointment_close' => '17:00',
+        'appointment_days' => [1, 2, 3, 4, 5, 6], // ISO weekdays: Monday = 1 ... Sunday = 7
+        'appointment_slot_minutes' => 30,
+        'appointments_per_slot' => 4,           // how many patients the hospital can see in one slot
     ];
 
     protected function casts(): array
@@ -62,6 +71,18 @@ class Tenant extends Model
     public function branches(): HasMany
     {
         return $this->hasMany(Tenant::class, 'parent_id');
+    }
+
+    /** For a hospital's own pharmacy: the hospital it belongs to. */
+    public function hospital(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Tenant::class, 'hospital_id');
+    }
+
+    /** For a hospital: its own (in-house) pharmacies, each with its own EFDA licence. */
+    public function inHousePharmacies(): HasMany
+    {
+        return $this->hasMany(Tenant::class, 'hospital_id');
     }
 
     public function subscription(): \Illuminate\Database\Eloquent\Relations\HasOne
@@ -130,6 +151,19 @@ class Tenant extends Model
     public function users(): HasMany
     {
         return $this->hasMany(User::class);
+    }
+
+    /** Medical specialties a hospital / clinic offers (Orthopedics & Spine, Cardiology...). */
+    public function specialties(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(HospitalSpecialty::class, 'hospital_specialty_tenant', 'tenant_id', 'hospital_specialty_id')
+            ->orderBy('sort_order')->orderBy('name');
+    }
+
+    /** Patients registered at this hospital / clinic. */
+    public function patients(): HasMany
+    {
+        return $this->hasMany(Patient::class);
     }
 
     public function pharmacyMedicines(): HasMany

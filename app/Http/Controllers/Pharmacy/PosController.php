@@ -44,7 +44,59 @@ class PosController extends Controller
         $order = $this->orders->sellWalkIn($request->user(), $request->validated());
         $order->loadMissing('invoice');
 
+        if (OrderService::awaitsCashier($order)) {
+            return $this->respond(new OrderResource($order), "Sale {$order->order_number} sent to the cashier - ETB ".number_format((float) $order->total_amount, 2).'. Hand the medicine over once it is paid.', 201);
+        }
+
         return $this->respond(new OrderResource($order), "Sale {$order->order_number} completed - ETB ".number_format((float) $order->total_amount, 2), 201);
+    }
+
+    /**
+     * Counter sales at the cashier: waiting for payment, and today's paid ones (so the pharmacist knows what to hand over).
+     */
+    public function counterSales(Request $request)
+    {
+        abort_unless($request->user()->canAny(['billing.collect', 'billing.view', 'sales.create']), 403);
+        $paid = $request->query('status') === 'paid';
+
+        $orders = Order::query()
+            ->with('items.medicine', 'creator:id,name')
+            ->where('channel', 'walk_in')
+            ->when($paid,
+                fn ($q) => $q->whereIn('status', Order::FULFILLED_STATUSES)->whereDate('fulfilled_at', today())
+                    ->whereExists(fn ($e) => $e->selectRaw('1')->from('activity_logs')->whereColumn('activity_logs.entity_id', 'orders.id')
+                        ->where('activity_logs.action', 'sale_paid_at_cashier')),
+                fn ($q) => $q->whereIn('status', Order::OPEN_STATUSES)->where('payment_status', 'unpaid'))
+            ->latest($paid ? 'fulfilled_at' : 'created_at')
+            ->limit(50)
+            ->get();
+
+        return OrderResource::collection($orders)->additional(['meta' => [
+            'waiting' => Order::where('channel', 'walk_in')->whereIn('status', Order::OPEN_STATUSES)->where('payment_status', 'unpaid')->count(),
+        ]]);
+    }
+
+    /** Cashier takes the money; stock is deducted and the receipt issued. */
+    public function payCounterSale(Request $request, Order $order)
+    {
+        abort_unless($request->user()->can('billing.collect'), 403, 'Only the cashier can take payments.');
+        $data = $request->validate([
+            'method' => ['required', \Illuminate\Validation\Rule::in(Order::PAYMENT_METHODS)],
+            'reference' => ['nullable', 'string', 'max:80'],
+        ]);
+        $order = $this->orders->collectAtCashier($order, $data['method'], $data['reference'] ?? null);
+
+        return $this->respond(new OrderResource($order), "Paid - receipt {$order->invoice?->invoice_number} issued. The pharmacist can hand over the medicine.");
+    }
+
+    /** The customer changed their mind before paying. */
+    public function cancelCounterSale(Request $request, Order $order)
+    {
+        abort_unless($request->user()->canAny(['billing.collect', 'sales.create']), 403);
+        abort_unless(OrderService::awaitsCashier($order), 422, 'Only a sale still waiting for payment can be cancelled here.');
+        $order = $this->orders->cancel($order, $request->input('reason') ?: 'Cancelled before payment');
+
+        return $this->respond(new OrderResource($order), "Sale {$order->order_number} cancelled - nothing was taken from stock.");
     }
 
     /**

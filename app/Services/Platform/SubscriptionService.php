@@ -110,6 +110,9 @@ class SubscriptionService
             }
         });
 
-        return ['past_due' => $pastDue, 'reminded' => $reminded];
+        // Approved downgrades whose paid period has ended
+        $planChanges = app(PlanChangeService::class)->applyDue();
+
+        return ['past_due' => $pastDue, 'reminded' => $reminded, 'plan_changes' => $planChanges];
     }
 }
